@@ -1,0 +1,21 @@
+FROM busybox:1.37.0-musl AS sleep
+
+FROM --platform=$BUILDPLATFORM golang:1.27.1-bookworm AS build
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY . .
+ARG TARGETOS
+ARG TARGETARCH
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /orpheus-space ./cmd/server
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /app
+COPY --from=sleep /bin/sleep /bin/sleep
+COPY --from=build /orpheus-space /orpheus-space
+COPY --from=build /app/migrations ./migrations
+USER 65532:65532
+EXPOSE 8000 9100
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s CMD ["/orpheus-space", "healthcheck"]
+ENTRYPOINT ["/orpheus-space"]
+CMD ["serve"]

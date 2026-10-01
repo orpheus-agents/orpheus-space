@@ -1,0 +1,10 @@
+[execution.agent]
+profile = "default"
+# instructions_file = "/etc/orpheus-space/instructions.md"
+
+[execution.sandbox]
+template = "orpheus-codex"
+env_from = ["MATTERMOST_BOT_TOKEN"]
+
+[execution.limits]
+run_timeout_seconds = 3600

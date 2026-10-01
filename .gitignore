@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.dist
+orpheus-space.toml
+bin/
+*.log
