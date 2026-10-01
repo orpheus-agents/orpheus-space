@@ -67,3 +67,25 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=release-image
           cache-to: type=gha,mode=max,scope=release-image
+
+  publish-cli:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build CLI and skill archives
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: make release-cli VERSION="$VERSION"
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          gh release view "$VERSION" >/dev/null 2>&1 || gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes
+          gh release upload "$VERSION" bin/release/*.tar.gz bin/release/checksums.txt --clobber

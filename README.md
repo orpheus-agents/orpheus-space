@@ -12,7 +12,7 @@
 Shared settings for Orpheus agent users. Go 1.27, PostgreSQL 16.
 
 Space manages and executes schedules through the Orpheus core. The API and worker
-are separate commands using the same database and image. SAML, CLI and the web
+are separate commands using the same database and image. SAML and the web
 interface follow in separate implementation stages.
 
 ## Local development
@@ -187,4 +187,41 @@ PR and main CI run `make check` and `make smoke`. After review and green PR CI,
 merge and tag the merge commit without waiting for repeated main CI. Version tags
 publish `retailcrm/orpheus-space` for linux/amd64 and linux/arm64 using
 `vars.DOCKERHUB_USERNAME` and `secrets.DOCKERHUB_TOKEN`. Public client source shares
-the same module tag. CLI binaries and skill assets will be added with those features.
+the same module tag. CLI binaries, skill assets and checksums are attached by tag CI.
+
+## CLI and agent skill
+
+Download the Linux amd64/arm64 CLI archive and skill archive from the same GitHub
+release, verify them against `checksums.txt`, and put the binary on PATH. Unpack
+`orpheus-space_<version>_skill.tar.gz` into the agent's skills directory; keep the
+`references/` subdirectory. The server image and CLI are separate executables.
+
+```sh
+export ORPHEUS_SPACE_HOST=http://localhost:8010
+export ORPHEUS_SPACE_API_KEY=local-space-key
+orpheus-space schedule list --owner-email alice@example.com --json
+orpheus-space schedule create --file schedule.json --json
+orpheus-space schedule history <id> --json
+orpheus-space schedule result <id> <occurrence-id> --json
+```
+
+`--file -` reads stdin. `--host` overrides the origin; keys are accepted only via
+ENV. Redirects are never followed. Output is JSON, indented by default or compact
+with `--json`; errors are JSON on stderr. Exit codes: 0 success, 1 error.
+Each list/history call reads one page. Reuse `next_cursor` with the same filters.
+`result` explicitly accesses core; other reads use Space's stored data.
+
+Create generates an idempotency UUID or accepts `--idempotency-key`. After an error,
+the diagnostic includes that key: retry the same input with the same key. The CLI
+does not retry automatically. API error diagnostics contain HTTP status and a
+known error code, not arbitrary upstream messages or credential-bearing URLs.
+
+See [the agent skill](skills/orpheus-space/SKILL.md) for author identification from
+connector metadata, ownership filters, prompt context, timezone and ENV selection.
+Mattermost is one example of a connector metadata contract.
+These are agent instructions, not server authorization rules.
+
+`make build-cli` checks the CLI build; `make release-cli VERSION=dev` produces
+Linux archives, the complete skill and checksums under `bin/release/`. Tag CI
+publishes these alongside the server image. For a local sandbox test, install
+these files only in a temporary sandbox; production template integration is separate.
