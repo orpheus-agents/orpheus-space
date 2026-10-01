@@ -1,0 +1,76 @@
+x-go-volumes: &go-volumes
+  - .:/app
+  - go-mod:/go/pkg/mod
+  - tools-cache:/home/orpheus/.cache
+  - go-build:/home/orpheus/.cache/go-build
+x-user-args: &user-args
+  ORPHEUS_UID: ${ORPHEUS_UID:-1000}
+  ORPHEUS_GID: ${ORPHEUS_GID:-1000}
+services:
+  app:
+    build:
+      context: .
+      dockerfile: .docker/app/dev/Dockerfile
+      args: *user-args
+    image: orpheus-space-app
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://orpheus:orpheus@db:5432/orpheus_space
+      ORPHEUS_CONFIG_FILE: /app/orpheus-space.toml
+    volumes: *go-volumes
+    ports: ["127.0.0.1:8010:8000", "127.0.0.1:9110:9100"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, go, run, ./cmd/server, healthcheck]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    stop_grace_period: 15s
+  tools:
+    build:
+      context: .
+      dockerfile: .docker/tools/Dockerfile
+      args: *user-args
+    image: ${ORPHEUS_TOOLS_IMAGE:-orpheus-space-tools}
+    profiles: [tools]
+    init: true
+    working_dir: /app
+    volumes: *go-volumes
+    environment:
+      TEST_DATABASE_URL: postgres://orpheus:orpheus@test-db:5432/orpheus_space_test
+  test-db:
+    image: postgres:16.10
+    profiles: [test]
+    environment:
+      POSTGRES_DB: orpheus_space_test
+      POSTGRES_USER: orpheus
+      POSTGRES_PASSWORD: orpheus
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U orpheus -d orpheus_space_test]
+      interval: 1s
+      timeout: 5s
+      retries: 20
+  db:
+    image: postgres:16.10
+    environment:
+      POSTGRES_DB: orpheus_space
+      POSTGRES_USER: orpheus
+      POSTGRES_PASSWORD: orpheus
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U orpheus -d orpheus_space]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+volumes:
+  postgres-data:
+  go-mod:
+  go-build:
+  tools-cache:

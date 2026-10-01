@@ -1,0 +1,8 @@
+package: client
+generate:
+  models: true
+  client: true
+output-options:
+  nullable-type: true
+  name-normalizer: ToCamelCaseWithInitialisms
+  response-type-suffix: HTTPResponse

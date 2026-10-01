@@ -1,0 +1,333 @@
+openapi: 3.0.3
+info:
+  title: Orpheus Space API
+  version: 0.1.0
+  description: Schedule management. These endpoints use only Space storage and never call the Orpheus core.
+  license:
+    name: MIT
+    url: https://opensource.org/license/mit
+servers:
+  - url: http://localhost:8010
+security:
+  - bearerAuth: []
+  - {}
+tags:
+  - name: Schedules
+    description: Shared schedules, settings and cron preview.
+  - name: Auth
+    description: Browser access mode.
+paths:
+  /api/v1/schedules:
+    get:
+      operationId: ListSchedules
+      summary: List schedules
+      tags: [Schedules]
+      parameters:
+        - $ref: '#/components/parameters/OwnerEmail'
+        - $ref: '#/components/parameters/Unowned'
+        - $ref: '#/components/parameters/Status'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchedulePage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: CreateSchedule
+      summary: Create a schedule
+      tags: [Schedules]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSchedule'
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/schedules/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: GetSchedule
+      summary: Get a schedule including deleted records
+      tags: [Schedules]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        default:
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: UpdateSchedule
+      summary: Update selected schedule fields
+      tags: [Schedules]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSchedule'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: DeleteSchedule
+      summary: Soft delete a schedule
+      tags: [Schedules]
+      responses:
+        '204':
+          description: Success
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/schedules/settings:
+    get:
+      operationId: GetSettings
+      summary: Get allowed environment names
+      tags: [Schedules]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/schedules/preview:
+    post:
+      operationId: PreviewSchedule
+      summary: Preview five future cron occurrences
+      tags: [Schedules]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreviewInput'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preview'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/auth/session:
+    get:
+      operationId: GetAuthSession
+      summary: Get browser access state
+      tags: [Auth]
+      security: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      schema: {type: string, format: uuid}
+      description: Retries with the same normalized body return the original response. Keys do not expire.
+    OwnerEmail:
+      name: owner_email
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items: {type: string}
+      description: Repeated email filter; OR semantics, at most 100 distinct normalized emails.
+    Unowned:
+      name: unowned
+      in: query
+      schema: {type: boolean}
+      description: Only schedules without an owner. Cannot be combined with owner_email.
+    Status:
+      name: status
+      in: query
+      schema: {$ref: '#/components/schemas/Status'}
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+    Cursor:
+      name: cursor
+      in: query
+      schema: {type: string, minLength: 1, maxLength: 8192}
+      description: Opaque position bound to normalized filters. New inserts are excluded from an ongoing traversal.
+  responses:
+    Problem:
+      description: Structured API error. 401 credentials, 403 CSRF, 404 missing, 409 conflict, 422 validation, 503 unavailable.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Problem'}
+  schemas:
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, phase, details]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            phase: {type: string, nullable: true}
+            details:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [path, code]
+                properties:
+                  path:
+                    type: array
+                    items: {type: string}
+                  code: {type: string}
+    Status:
+      type: string
+      enum: [active, paused]
+    SessionMode:
+      type: string
+      enum: [new, reuse]
+    EnvFrom:
+      type: array
+      uniqueItems: true
+      items: {type: string, pattern: '^[A-Za-z_][A-Za-z0-9_]*$'}
+    CreateSchedule:
+      type: object
+      additionalProperties: false
+      required: [name, prompt, cron, timezone]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        prompt: {type: string, minLength: 1}
+        cron: {type: string, minLength: 1}
+        timezone: {type: string, minLength: 1}
+        status: {$ref: '#/components/schemas/Status'}
+        model: {type: string, nullable: true, minLength: 1}
+        session_mode: {$ref: '#/components/schemas/SessionMode'}
+        owner_email: {type: string, nullable: true, minLength: 1}
+        env_from: {$ref: '#/components/schemas/EnvFrom'}
+    UpdateSchedule:
+      type: object
+      additionalProperties: false
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        prompt: {type: string, minLength: 1}
+        cron: {type: string, minLength: 1}
+        timezone: {type: string, minLength: 1}
+        status: {$ref: '#/components/schemas/Status'}
+        model: {type: string, nullable: true, minLength: 1}
+        session_mode: {$ref: '#/components/schemas/SessionMode'}
+        owner_email: {type: string, nullable: true, minLength: 1}
+        env_from: {$ref: '#/components/schemas/EnvFrom'}
+    Schedule:
+      type: object
+      additionalProperties: false
+      required: [id, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, deleted_at, last_occurrence]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        prompt: {type: string, minLength: 1}
+        cron: {type: string, minLength: 1}
+        timezone: {type: string, minLength: 1}
+        status: {$ref: '#/components/schemas/Status'}
+        model: {type: string, nullable: true, minLength: 1}
+        session_mode: {$ref: '#/components/schemas/SessionMode'}
+        owner_email: {type: string, nullable: true, minLength: 1}
+        env_from: {$ref: '#/components/schemas/EnvFrom'}
+        id: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        next_run_at: {type: string, format: date-time, nullable: true}
+        deleted_at: {type: string, format: date-time, nullable: true}
+        last_occurrence:
+          type: object
+          nullable: true
+          description: Always null until execution support is released.
+          additionalProperties: false
+    SchedulePage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/Schedule'}
+        next_cursor: {type: string, nullable: true}
+    Settings:
+      type: object
+      additionalProperties: false
+      required: [base_env_from, allowed_env_from, browser_auth]
+      properties:
+        base_env_from: {$ref: '#/components/schemas/EnvFrom'}
+        allowed_env_from: {$ref: '#/components/schemas/EnvFrom'}
+        browser_auth: {type: string, enum: [api_only, anonymous]}
+    PreviewInput:
+      type: object
+      additionalProperties: false
+      required: [cron, timezone]
+      properties:
+        cron: {type: string, minLength: 1}
+        timezone: {type: string, minLength: 1}
+    Preview:
+      type: object
+      additionalProperties: false
+      required: [times]
+      properties:
+        times:
+          type: array
+          minItems: 5
+          maxItems: 5
+          items: {type: string, format: date-time}
+    AuthSession:
+      type: object
+      additionalProperties: false
+      required: [mode, authenticated, read_access, write_access, user, expires_at]
+      properties:
+        mode: {type: string, enum: [api_only, anonymous]}
+        authenticated: {type: boolean}
+        read_access: {type: boolean}
+        write_access: {type: boolean}
+        user: {type: object, nullable: true, additionalProperties: false}
+        expires_at: {type: string, format: date-time, nullable: true}

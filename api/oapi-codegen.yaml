@@ -1,0 +1,9 @@
+package: api
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+  embedded-spec: true
+output-options:
+  nullable-type: true
+  name-normalizer: ToCamelCaseWithInitialisms
