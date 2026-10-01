@@ -116,10 +116,17 @@ docker-build:
 CHECK_JOBS ?= 4
 
 check: generate-check
-	$(MAKE) -j$(CHECK_JOBS) tidy-check gofix-check lint deadcode sqlc-check test-go vuln build build-client
+	$(MAKE) -j$(CHECK_JOBS) tidy-check gofix-check lint deadcode sqlc-check test-go vuln build build-client build-cli
 	$(MAKE) -j1 test-integration test-migrations test-go-race
 
 .PHONY: smoke
 smoke: tools docker-build
 	$(COMPOSE) --profile test up -d --wait test-db
 	sh tools/smoke.sh
+
+.PHONY: build-cli release-cli
+build-cli: tools
+	$(RUN) go build -trimpath -o /tmp/orpheus-space-cli ./cmd/orpheus-space
+
+release-cli: tools
+	$(COMPOSE) --profile tools run --rm --no-deps -e VERSION=$(or $(VERSION),dev) tools sh tools/release-cli.sh
