@@ -18,10 +18,13 @@ ORPHEUS_BROWSER_AUTH=api_only
 PUBLIC_API_KEYS=["fixture-only-key"]
 HARNESS_ENV_ALLOWLIST=["MATTERMOST_BOT_TOKEN"]
 ORPHEUS_CONFIG_FILE=/etc/space/space.toml
+ORPHEUS_BASE_URL=http://unused-core:8000
+ORPHEUS_API_KEY=fixture-core-key
 ENV
 [ "$(docker image inspect -f '{{.Config.User}}' orpheus-space:local)" = '65532:65532' ]
 docker run --rm --network "$smoke_network" --env-file "$smoke_tmp/app.env" orpheus-space:local migrate up
-docker run -d --name "$smoke_prefix" --network "$smoke_network" --read-only --cap-drop ALL --security-opt no-new-privileges --env-file "$smoke_tmp/app.env" -v "$smoke_tmp/space.toml:/etc/space/space.toml:ro" orpheus-space:local >/dev/null
+for smoke_command in serve worker; do
+docker run -d --name "$smoke_prefix" --network "$smoke_network" --read-only --cap-drop ALL --security-opt no-new-privileges --env-file "$smoke_tmp/app.env" -v "$smoke_tmp/space.toml:/etc/space/space.toml:ro" orpheus-space:local "$smoke_command" >/dev/null
 smoke_attempt=0
 until docker exec "$smoke_prefix" /orpheus-space healthcheck >/dev/null 2>&1; do
   smoke_attempt=$((smoke_attempt+1))
@@ -31,4 +34,6 @@ done
 docker exec "$smoke_prefix" sleep 1
 docker stop -t 10 "$smoke_prefix" >/dev/null
 [ "$(docker inspect -f '{{.State.ExitCode}}' "$smoke_prefix")" = 0 ]
-echo 'Production image: migration, readiness and graceful SIGTERM passed.'
+docker rm "$smoke_prefix" >/dev/null
+done
+echo 'Production API and worker: migration, readiness and graceful SIGTERM passed.'

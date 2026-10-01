@@ -128,7 +128,7 @@ func Handler(s *Server) (http.Handler, error) {
 			writeError(w, r, schedule.InvalidAt("header", "Idempotency-Key"))
 			return
 		}
-		if r.Method == http.MethodPost || r.Method == http.MethodPatch {
+		if route.Operation.RequestBody != nil && (r.Method == http.MethodPost || r.Method == http.MethodPatch) {
 			raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, s.Config.MaxRequestBytes))
 			if err != nil {
 				if _, large := errors.AsType[*http.MaxBytesError](err); large {
@@ -171,7 +171,7 @@ func validationProblem(err error) *schedule.Error {
 	if param, ok := errors.AsType[*api.InvalidParamFormatError](err); ok {
 		location := "query"
 		switch param.ParamName {
-		case "id":
+		case "id", "occurrence_id":
 			location = "path"
 		case "Idempotency-Key":
 			location = "header"

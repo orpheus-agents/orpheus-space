@@ -17,9 +17,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/orpheus-agents/orpheus-space/internal/config"
+	"github.com/orpheus-agents/orpheus-space/internal/core"
 	"github.com/orpheus-agents/orpheus-space/internal/httpserver"
 	"github.com/orpheus-agents/orpheus-space/internal/migrate"
 	"github.com/orpheus-agents/orpheus-space/internal/store"
+	"github.com/orpheus-agents/orpheus-space/internal/worker"
 )
 
 func main() { os.Exit(mainCode()) }
@@ -77,6 +79,12 @@ func run(ctx context.Context, args []string) error {
 			return errors.New("DATABASE_URL is required")
 		}
 		return migrate.Run(ctx, dsn, sub, dir)
+	case "worker":
+		cfg, err := config.LoadWorker()
+		if err != nil {
+			return err
+		}
+		return runWorker(ctx, cfg)
 	case "serve":
 		if len(args) > 1 {
 			return errors.New("unexpected serve arguments")
@@ -88,7 +96,7 @@ func run(ctx context.Context, args []string) error {
 		}
 		return serve(ctx, cfg)
 	default:
-		return errors.New("use serve, migrate or healthcheck")
+		return errors.New("use serve, worker, migrate or healthcheck")
 	}
 }
 func serve(ctx context.Context, cfg config.Config) error {
@@ -108,7 +116,15 @@ func serve(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 	storage := &store.Store{Pool: pool, AllowedEnv: cfg.AllowedEnv}
-	handler, err := httpserver.Handler(&httpserver.Server{Store: storage, Config: cfg})
+	var coreClient httpserver.CoreReader
+	if cfg.CoreURL != "" {
+		client, err := core.New(cfg.CoreURL, cfg.CoreAPIKey)
+		if err != nil {
+			return err
+		}
+		coreClient = client
+	}
+	handler, err := httpserver.Handler(&httpserver.Server{Store: storage, Config: cfg, Core: coreClient})
 	if err != nil {
 		return err
 	}
@@ -163,4 +179,67 @@ func serve(ctx context.Context, cfg config.Config) error {
 		return nil
 	}
 	return cause
+}
+
+func runWorker(ctx context.Context, cfg config.Config) error {
+	pc, err := config.DatabasePoolConfig(cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, pc)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	database := stdlib.OpenDBFromPool(pool)
+	defer func() { _ = database.Close() }()
+	provider, err := migrate.Provider(database, cfg.MigrationsDir)
+	if err != nil {
+		return err
+	}
+	if err = migrate.Ready(ctx, provider); err != nil {
+		return err
+	}
+	lease, err := worker.Acquire(ctx, pc.ConnConfig)
+	if err != nil {
+		return err
+	}
+	defer lease.Close()
+	client, err := core.New(cfg.CoreURL, cfg.CoreAPIKey)
+	if err != nil {
+		return err
+	}
+	w := &worker.Worker{Store: &store.Store{Pool: pool, AllowedEnv: cfg.AllowedEnv}, Core: client, Build: worker.Builder(cfg), Poll: cfg.WorkerPoll}
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	listener, err := net.Listen("tcp", cfg.SystemAddress)
+	if err != nil {
+		return err
+	}
+	probes := http.NewServeMux()
+	probes.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"status":"ok"}`)
+	})
+	probes.HandleFunc("GET /ready", func(w http.ResponseWriter, r *http.Request) {
+		bounded, stop := context.WithTimeout(r.Context(), 2*time.Second)
+		defer stop()
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		if workerCtx.Err() != nil || lease.Check(bounded) != nil || migrate.Ready(bounded, provider) != nil {
+			w.WriteHeader(503)
+			_, _ = io.WriteString(w, `{"status":"unavailable"}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"status":"ok"}`)
+	})
+	system := &http.Server{Handler: probes, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- system.Serve(listener); cancel() }()
+	defer func() { _ = system.Close(); <-serverDone }()
+	err = w.Run(workerCtx, lease)
+	if ctx.Err() != nil {
+		return nil
+	}
+	return err
 }

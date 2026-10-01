@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/orpheus-agents/orpheus-space/internal/schedule"
 	"github.com/pelletier/go-toml/v2"
@@ -18,9 +19,9 @@ import (
 
 type Execution struct {
 	Agent struct {
-		Profile          string `toml:"profile"`
-		Instructions     string `toml:"instructions"`
-		InstructionsFile string `toml:"instructions_file"`
+		Profile          string  `toml:"profile"`
+		Instructions     *string `toml:"instructions"`
+		InstructionsFile string  `toml:"instructions_file"`
 	} `toml:"agent"`
 	Sandbox struct {
 		Template string   `toml:"template"`
@@ -32,6 +33,8 @@ type Execution struct {
 	} `toml:"limits"`
 }
 type Config struct {
+	CoreURL         string
+	CoreAPIKey      string
 	DatabaseURL     string
 	MigrationsDir   string
 	APIAddress      string
@@ -41,6 +44,7 @@ type Config struct {
 	PublicAPIKeys   []string
 	AllowedEnv      []string
 	MaxRequestBytes int64
+	WorkerPoll      time.Duration
 	Execution       Execution
 }
 
@@ -50,8 +54,24 @@ func env(key, fallback string) string {
 	}
 	return fallback
 }
-func Load() (Config, error) {
-	c := Config{MigrationsDir: env("ORPHEUS_MIGRATIONS_DIR", "migrations"), DatabaseURL: os.Getenv("DATABASE_URL"), BrowserAuth: env("ORPHEUS_BROWSER_AUTH", "api_only"), PublicURL: os.Getenv("ORPHEUS_PUBLIC_URL"), MaxRequestBytes: 1048576}
+func Load() (Config, error)       { return load(true) }
+func LoadWorker() (Config, error) { return load(false) }
+func load(browser bool) (Config, error) {
+	c := Config{CoreURL: os.Getenv("ORPHEUS_BASE_URL"), CoreAPIKey: os.Getenv("ORPHEUS_API_KEY"), MigrationsDir: env("ORPHEUS_MIGRATIONS_DIR", "migrations"), DatabaseURL: os.Getenv("DATABASE_URL"), BrowserAuth: env("ORPHEUS_BROWSER_AUTH", "api_only"), PublicURL: os.Getenv("ORPHEUS_PUBLIC_URL"), MaxRequestBytes: 1048576}
+	poll, err := time.ParseDuration(env("WORKER_POLL_SECONDS", "1") + "s")
+	if err != nil || poll <= 0 {
+		return c, errors.New("invalid WORKER_POLL_SECONDS")
+	}
+	c.WorkerPoll = poll
+	if c.CoreURL != "" {
+		u, err := url.Parse(c.CoreURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" {
+			return c, errors.New("invalid ORPHEUS_BASE_URL")
+		}
+	}
+	if !browser && (c.CoreURL == "" || c.CoreAPIKey == "") {
+		return c, errors.New("ORPHEUS_BASE_URL and ORPHEUS_API_KEY are required for worker")
+	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("DATABASE_URL is required")
 	}
@@ -86,7 +106,7 @@ func Load() (Config, error) {
 	if c.BrowserAuth != "api_only" && c.BrowserAuth != "anonymous" {
 		return c, errors.New("ORPHEUS_BROWSER_AUTH must be api_only or anonymous; SAML is not available in this release")
 	}
-	if c.BrowserAuth == "api_only" && len(c.PublicAPIKeys) == 0 {
+	if browser && c.BrowserAuth == "api_only" && len(c.PublicAPIKeys) == 0 {
 		return c, errors.New("PUBLIC_API_KEYS is required in api_only mode")
 	}
 	if c.PublicURL != "" || c.BrowserAuth == "anonymous" {
@@ -129,14 +149,14 @@ func Load() (Config, error) {
 		return c, errors.New("invalid execution limits")
 	}
 	if c.Execution.Agent.InstructionsFile != "" {
-		if c.Execution.Agent.Instructions != "" {
+		if c.Execution.Agent.Instructions != nil {
 			return c, errors.New("choose instructions or instructions_file")
 		}
 		raw, err := os.ReadFile(c.Execution.Agent.InstructionsFile)
 		if err != nil {
 			return c, errors.New("cannot read execution instructions_file")
 		}
-		c.Execution.Agent.Instructions = string(raw)
+		c.Execution.Agent.Instructions = new(string(raw))
 	}
 	base, err := schedule.EnvNames(c.Execution.Sandbox.EnvFrom, c.AllowedEnv)
 	if err != nil {

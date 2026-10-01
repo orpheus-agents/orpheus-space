@@ -4,7 +4,12 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/orpheus-agents/orpheus-space/internal/core"
+	coreapi "github.com/orpheus-agents/orpheus/client"
 
 	"github.com/orpheus-agents/orpheus-space/internal/api"
 	"github.com/orpheus-agents/orpheus-space/internal/config"
@@ -12,7 +17,11 @@ import (
 	"github.com/orpheus-agents/orpheus-space/internal/store"
 )
 
+type CoreReader interface {
+	Run(context.Context, uuid.UUID, uuid.UUID) (coreapi.Run, error)
+}
 type Server struct {
+	Core   CoreReader
 	Store  *store.Store
 	Config config.Config
 	Now    func() time.Time
@@ -113,4 +122,54 @@ func (s *Server) GetAuthSession(ctx context.Context, _ api.GetAuthSessionRequest
 	authenticated, _ := ctx.Value(bearerKey{}).(bool)
 	access := authenticated || s.Config.BrowserAuth == "anonymous"
 	return response[api.GetAuthSession200JSONResponse](map[string]any{"mode": s.Config.BrowserAuth, "authenticated": authenticated, "read_access": access, "write_access": access, "user": nil, "expires_at": nil})
+}
+
+func (s *Server) ListOccurrences(ctx context.Context, r api.ListOccurrencesRequestObject) (api.ListOccurrencesResponseObject, error) {
+	out, err := s.Store.History(ctx, r.ID, value(r.Params.Limit, 50), value(r.Params.Cursor, ""))
+	if err != nil {
+		return nil, err
+	}
+	return response[api.ListOccurrences200JSONResponse](out)
+}
+func (s *Server) GetOccurrence(ctx context.Context, r api.GetOccurrenceRequestObject) (api.GetOccurrenceResponseObject, error) {
+	out, err := s.Store.Occurrence(ctx, r.ID, r.OccurrenceID)
+	if err != nil {
+		return nil, err
+	}
+	return response[api.GetOccurrence200JSONResponse](out)
+}
+func (s *Server) ResetSession(ctx context.Context, r api.ResetSessionRequestObject) (api.ResetSessionResponseObject, error) {
+	out, err := s.Store.ResetSession(ctx, r.ID)
+	if err != nil {
+		return nil, err
+	}
+	return response[api.ResetSession200JSONResponse](out)
+}
+func (s *Server) GetOccurrenceResult(ctx context.Context, r api.GetOccurrenceResultRequestObject) (api.GetOccurrenceResultResponseObject, error) {
+	occ, err := s.Store.Occurrence(ctx, r.ID, r.OccurrenceID)
+	if err != nil {
+		return nil, err
+	}
+	if occ.RunID == nil || occ.SessionID == nil {
+		return nil, schedule.Fail(409, "run_not_started", "Run has not been accepted.")
+	}
+	if s.Core == nil {
+		return nil, schedule.Fail(503, "core_unavailable", "Core is temporarily unavailable.")
+	}
+	run, err := s.Core.Run(ctx, *occ.SessionID, *occ.RunID)
+	if err != nil {
+		if failure, ok := errors.AsType[*core.Failure](err); ok && failure.Status == 404 {
+			return nil, schedule.Fail(404, "run_result_not_found", "Run result is no longer available.")
+		}
+		return nil, schedule.Fail(503, "core_unavailable", "Core is temporarily unavailable.")
+	}
+	var message any
+	if run.FinalMessage != nil {
+		message = map[string]any{"id": run.FinalMessage.ID, "text": run.FinalMessage.Text, "created_at": run.FinalMessage.CreatedAt}
+	}
+	var problem any
+	if run.Error != nil {
+		problem = map[string]any{"code": run.Error.Code, "message": run.Error.Message, "phase": run.Error.Phase}
+	}
+	return response[api.GetOccurrenceResult200JSONResponse](map[string]any{"run_status": run.Status, "fetched_at": time.Now().UTC(), "final_message": message, "error": problem})
 }

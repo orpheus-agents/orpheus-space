@@ -41,7 +41,12 @@ func missing(err error) error {
 }
 func (s *Store) Get(ctx context.Context, id uuid.UUID) (schedule.Schedule, error) {
 	row, err := db.New(s.Pool).GetSchedule(ctx, id)
-	return record(row), missing(err)
+	if err != nil {
+		return schedule.Schedule{}, missing(err)
+	}
+	out := record(row)
+	err = summary(ctx, db.New(s.Pool), &out)
+	return out, err
 }
 func (s *Store) Create(ctx context.Context, in schedule.Input, key *uuid.UUID) (schedule.Schedule, error) {
 	now := s.now()
@@ -139,6 +144,16 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, patch []byte) (schedul
 	if in.Status == "paused" {
 		next = nil
 	}
+	if in.SessionMode != current.SessionMode || !slices.Equal(in.EnvFrom, current.EnvFrom) || !equalString(in.Model, current.Model) {
+		if err = q.ClearReusableSession(ctx, id); err != nil {
+			return schedule.Schedule{}, err
+		}
+	}
+	if in.Status == "paused" {
+		if err = q.CancelPending(ctx, db.CancelPendingParams{ScheduleID: id, CompletedAt: new(now)}); err != nil {
+			return schedule.Schedule{}, err
+		}
+	}
 	row, err = q.UpdateSchedule(ctx, db.UpdateScheduleParams{ID: id, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, Timezone: in.Timezone, Status: in.Status, Model: in.Model, SessionMode: in.SessionMode, OwnerEmail: in.OwnerEmail, EnvFrom: in.EnvFrom, UpdatedAt: now, NextRunAt: next, CronStartedAt: start})
 	if err != nil {
 		return schedule.Schedule{}, err
@@ -146,7 +161,9 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, patch []byte) (schedul
 	if err = tx.Commit(ctx); err != nil {
 		return schedule.Schedule{}, err
 	}
-	return record(row), nil
+	out := record(row)
+	err = summary(ctx, db.New(s.Pool), &out)
+	return out, err
 }
 func (s *Store) Delete(ctx context.Context, id uuid.UUID) error {
 	tx, err := s.Pool.Begin(ctx)
@@ -157,6 +174,9 @@ func (s *Store) Delete(ctx context.Context, id uuid.UUID) error {
 	q := db.New(tx)
 	if _, err = q.LockSchedule(ctx, id); err != nil {
 		return missing(err)
+	}
+	if err = q.CancelPending(ctx, db.CancelPendingParams{ScheduleID: id, CompletedAt: new(s.now())}); err != nil {
+		return err
 	}
 	if err = q.DeleteSchedule(ctx, db.DeleteScheduleParams{ID: id, DeletedAt: new(s.now())}); err != nil {
 		return err
@@ -244,8 +264,26 @@ func (s *Store) List(ctx context.Context, filter Filter, limit int, token string
 	if more {
 		rows = rows[:limit]
 	}
+	ids := make([]uuid.UUID, len(rows))
+	for i, row := range rows {
+		ids[i] = row.ID
+	}
+	last := make(map[uuid.UUID]schedule.Occurrence, len(rows))
+	if len(ids) > 0 {
+		occurrences, err := q.LastOccurrences(ctx, ids)
+		if err != nil {
+			return page, err
+		}
+		for _, row := range occurrences {
+			last[row.ScheduleID] = occurrence(row)
+		}
+	}
 	for _, row := range rows {
-		page.Items = append(page.Items, record(row))
+		out := record(row)
+		if occ, ok := last[row.ID]; ok {
+			out.LastOccurrence = new(occ)
+		}
+		page.Items = append(page.Items, out)
 	}
 	if more {
 		last := rows[len(rows)-1]
@@ -255,3 +293,5 @@ func (s *Store) List(ctx context.Context, filter Filter, limit int, token string
 	}
 	return page, nil
 }
+
+func equalString(a, b *string) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }

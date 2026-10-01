@@ -99,3 +99,26 @@ func TestPatchDoesNotMutateInput(t *testing.T) {
 		}
 	}
 }
+
+func TestLatestDue(t *testing.T) {
+	for _, tc := range []struct{ cron, zone, start, end string }{
+		{"* * * * *", "UTC", "2010-01-01T00:00:00Z", "2026-10-01T12:34:56Z"},
+		{"30 2 * * *", "Europe/Berlin", "2026-10-24T00:30:00Z", "2026-10-25T01:40:00Z"},
+		{"30 2 * * *", "Europe/Berlin", "2026-03-28T01:30:00Z", "2026-03-30T01:00:00Z"},
+		{"0 0 29 2 *", "UTC", "2020-02-29T00:00:00Z", "2026-10-01T00:00:00Z"},
+	} {
+		first, now := instant(tc.start), instant(tc.end)
+		got, err := Latest(tc.cron, tc.zone, first, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		next, err := Next(tc.cron, tc.zone, got)
+		if err != nil || !next.After(now) || got.After(now) || got.Before(first) {
+			t.Fatal(got, next, err)
+		}
+		exact, err := Next(tc.cron, tc.zone, got.Add(-time.Second))
+		if err != nil || !exact.Equal(got) {
+			t.Fatal("not a cron occurrence", got, err)
+		}
+	}
+}

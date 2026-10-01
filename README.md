@@ -11,10 +11,9 @@
 
 Shared settings for Orpheus agent users. Go 1.27, PostgreSQL 16.
 
-This release provides schedule management: CRUD, pause/resume, owner email filters,
-cursor pagination, cron preview and additional `env_from` names. Execution, run
-history, SAML, the CLI and the web interface follow in separate implementation
-stages. Creating an active schedule in this release does **not** run an agent.
+Space manages and executes schedules through the Orpheus core. The API and worker
+are separate commands using the same database and image. SAML, CLI and the web
+interface follow in separate implementation stages.
 
 ## Local development
 
@@ -31,7 +30,11 @@ curl -fsS -H 'Authorization: Bearer local-space-key' http://localhost:8010/api/v
 `make stop` preserves database volumes. The API listens on local port 8010 and
 system probes on 9110; container defaults match core (8000/9100). Compose supplies
 `.env`; the binary does not load dotenv files. Space uses its own database DSN.
-The API never calls the core in this release and needs no core credentials.
+Set `ORPHEUS_BASE_URL` and `ORPHEUS_API_KEY` in `.env` to connect a core instance
+reachable from Docker. `make start-worker` starts the planner separately;
+`make start` runs only the API/database. The worker requires core credentials;
+the API can run without them, returning 503 from the explicit result endpoint.
+Generated core client version: v0.4.0. No AgentBox credentials are needed here.
 
 ## API
 
@@ -46,6 +49,10 @@ and pin a release tag of the root module.
 | `GET/PATCH/DELETE /api/v1/schedules/{id}` | Read/edit/soft delete |
 | `GET /api/v1/schedules/settings` | Base and allowed ENV names, auth mode |
 | `POST /api/v1/schedules/preview` | Five future UTC times for cron/timezone |
+| `GET /api/v1/schedules/{id}/occurrences` | Stored history, cursor pagination |
+| `GET /api/v1/schedules/{id}/occurrences/{occurrence_id}` | Stored status/error and observation time |
+| `GET /api/v1/schedules/{id}/occurrences/{occurrence_id}/result` | Explicit core read of current run status, final message and error |
+| `POST /api/v1/schedules/{id}/reset-session` | Detach reusable session; 409 while an occurrence is active |
 | `GET /api/v1/auth/session` | Public browser access state |
 
 All users with access can edit all schedules. `owner_email` is an editable filter,
@@ -75,10 +82,53 @@ the location and field, for example `["body", "name"]` or `["query", "limit"]`,
 with codes such as `required`, `invalid_type`, `unknown_field` and `invalid_value`.
 API responses are no-store.
 
+## Execution and recovery
+
+The worker holds a PostgreSQL advisory lock on a dedicated connection; a second
+worker fails startup. Connection loss cancels requests and stops planning. Run one
+replica with Recreate. Eight concurrent requests, HTTP timeouts, and bounded
+backoff isolate unavailable schedules. System probes run on the worker's own
+9100 listener, separate from the API container.
+
+After downtime, only the latest due period is considered. Periods during a
+previous run are skipped using its actual `finished_at`; unknown outcomes block
+new execution until reconciled. There is no catch-up queue. `accepted` means the
+core accepted the request; `run_status` records execution separately. Read errors
+retain the last status and `observed_at`, setting `sync_error_code`.
+
+This includes core 404 (`run_not_found` / `session_not_found`): Space keeps polling,
+blocks further executions and returns 409 on session reset. A missing run does not
+prove completion; for example, a wrong core URL may hide a still-running task.
+Check `ORPHEUS_BASE_URL` and restore access to the original core/run. Once its
+terminal status is observed, planning resumes using its actual `finished_at`.
+If the core data is permanently lost, operator investigation is required; there
+is no automatic failure or force-reset API.
+
+Agent message front matter renders `scheduled_at` and `dispatched_at` in the
+schedule's timezone with the applicable UTC offset. Metadata retains UTC times.
+
+Before dispatch, Space persists the exact request bytes, path and idempotency key.
+Retries and restarts reuse them. Pause/delete cancels pending work; dispatching
+work is reconciled even after pause/delete, without cancelling an accepted run.
+An uncertain outcome stays unresolved on later auth/replay errors. Agent failures
+are not retried automatically. None of the snapshots contain secret ENV values.
+
+`new` creates single-run sessions. `reuse` continues the same session until model,
+ENV names, session mode or effective base configuration changes, or an explicit
+reset. Prompt/name/owner/cron edits preserve session history. Old sessions are not
+deleted by Space. Capacity and session-busy errors retry the same request;
+idempotency conflicts block that occurrence for operator investigation.
+
+Lists, cards, history, settings and reset use only Space's database. Only `result`
+reads the core, never writing the returned text/status back to the local history.
+Missing runs return 404, not-started occurrences 409, and core auth/network failures
+503. The core remains the only archive of messages and full results.
+
 ## Configuration and authentication
 
 | Environment | Purpose |
 | --- | --- |
+| `ORPHEUS_BASE_URL`, `ORPHEUS_API_KEY` | Core origin/key for dispatch, polling and explicit results |
 | `DATABASE_URL` | Space's PostgreSQL DSN; required |
 | `PUBLIC_API_KEYS` | JSON array of Space Bearer keys |
 | `ORPHEUS_BROWSER_AUTH` | `api_only` (default) or explicit local `anonymous` |
@@ -88,6 +138,7 @@ API responses are no-store.
 | `HARNESS_ENV_ALLOWLIST` | JSON array of permitted ENV names |
 | `ORPHEUS_HOST`, `ORPHEUS_PORT` | API bind, defaults `0.0.0.0:8000` |
 | `ORPHEUS_SYSTEM_HOST`, `ORPHEUS_SYSTEM_PORT` | System bind, defaults `0.0.0.0:9100` |
+| `WORKER_POLL_SECONDS` | Positive polling interval in seconds, default 1; fractions supported. Lock monitoring stays at 1 second |
 | `MAX_REQUEST_BYTES` | Body limit, default 1048576, range 4096–1048576 |
 
 A valid Bearer key grants read/write access. Any supplied invalid or empty
@@ -98,9 +149,10 @@ do not confer access. SAML is not enabled yet; unknown/unsupported modes fail st
 
 The TOML configuration follows core's agent/sandbox/limits structure; see
 [orpheus-space.toml.dist](orpheus-space.toml.dist). `instructions_file` and inline
-`instructions` are mutually exclusive. The API stores only extra ENV names, never
+`instructions` are mutually exclusive. Omitting both preserves core profile
+instructions; an explicit empty string clears them. The API stores only extra ENV names, never
 values. Both base names and additions must be allowlisted; duplicates are rejected.
-When execution is added, the core worker will resolve values for the union of base
+The core worker resolves values for the union of base
 and task names. Do not pass database or service-auth secrets to agent environments.
 
 ## Development checks
