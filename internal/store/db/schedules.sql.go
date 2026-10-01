@@ -15,7 +15,7 @@ import (
 
 const createSchedule = `-- name: CreateSchedule :one
 INSERT INTO schedules (id,name,prompt,cron,timezone,status,model,session_mode,owner_email,env_from,created_at,updated_at,next_run_at,cron_started_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12,$11) RETURNING id, sequence, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, cron_started_at, deleted_at
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12,$11) RETURNING id, sequence, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, cron_started_at, deleted_at, reusable_session_id, reusable_fingerprint
 `
 
 type CreateScheduleParams struct {
@@ -66,6 +66,8 @@ func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) 
 		&i.NextRunAt,
 		&i.CronStartedAt,
 		&i.DeletedAt,
+		&i.ReusableSessionID,
+		&i.ReusableFingerprint,
 	)
 	return i, err
 }
@@ -101,7 +103,7 @@ func (q *Queries) GetCreateKey(ctx context.Context, key uuid.UUID) (GetCreateKey
 }
 
 const getSchedule = `-- name: GetSchedule :one
-SELECT id, sequence, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, cron_started_at, deleted_at FROM schedules WHERE id=$1
+SELECT id, sequence, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, cron_started_at, deleted_at, reusable_session_id, reusable_fingerprint FROM schedules WHERE id=$1
 `
 
 func (q *Queries) GetSchedule(ctx context.Context, id uuid.UUID) (Schedule, error) {
@@ -124,12 +126,14 @@ func (q *Queries) GetSchedule(ctx context.Context, id uuid.UUID) (Schedule, erro
 		&i.NextRunAt,
 		&i.CronStartedAt,
 		&i.DeletedAt,
+		&i.ReusableSessionID,
+		&i.ReusableFingerprint,
 	)
 	return i, err
 }
 
 const listSchedules = `-- name: ListSchedules :many
-SELECT id, sequence, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, cron_started_at, deleted_at FROM schedules
+SELECT id, sequence, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, cron_started_at, deleted_at, reusable_session_id, reusable_fingerprint FROM schedules
 WHERE deleted_at IS NULL
  AND sequence <= $1::bigint
  AND ($2::text = '' OR status = $2::text)
@@ -185,6 +189,8 @@ func (q *Queries) ListSchedules(ctx context.Context, arg ListSchedulesParams) ([
 			&i.NextRunAt,
 			&i.CronStartedAt,
 			&i.DeletedAt,
+			&i.ReusableSessionID,
+			&i.ReusableFingerprint,
 		); err != nil {
 			return nil, err
 		}
@@ -197,7 +203,7 @@ func (q *Queries) ListSchedules(ctx context.Context, arg ListSchedulesParams) ([
 }
 
 const lockSchedule = `-- name: LockSchedule :one
-SELECT id, sequence, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, cron_started_at, deleted_at FROM schedules WHERE id=$1 FOR UPDATE
+SELECT id, sequence, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, cron_started_at, deleted_at, reusable_session_id, reusable_fingerprint FROM schedules WHERE id=$1 FOR UPDATE
 `
 
 func (q *Queries) LockSchedule(ctx context.Context, id uuid.UUID) (Schedule, error) {
@@ -220,6 +226,8 @@ func (q *Queries) LockSchedule(ctx context.Context, id uuid.UUID) (Schedule, err
 		&i.NextRunAt,
 		&i.CronStartedAt,
 		&i.DeletedAt,
+		&i.ReusableSessionID,
+		&i.ReusableFingerprint,
 	)
 	return i, err
 }
@@ -267,7 +275,7 @@ func (q *Queries) ScheduleUpperBound(ctx context.Context) (int64, error) {
 
 const updateSchedule = `-- name: UpdateSchedule :one
 UPDATE schedules SET name=$2,prompt=$3,cron=$4,timezone=$5,status=$6,model=$7,session_mode=$8,owner_email=$9,env_from=$10,updated_at=$11,next_run_at=$12,cron_started_at=$13
-WHERE id=$1 RETURNING id, sequence, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, cron_started_at, deleted_at
+WHERE id=$1 RETURNING id, sequence, name, prompt, cron, timezone, status, model, session_mode, owner_email, env_from, created_at, updated_at, next_run_at, cron_started_at, deleted_at, reusable_session_id, reusable_fingerprint
 `
 
 type UpdateScheduleParams struct {
@@ -320,6 +328,8 @@ func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) 
 		&i.NextRunAt,
 		&i.CronStartedAt,
 		&i.DeletedAt,
+		&i.ReusableSessionID,
+		&i.ReusableFingerprint,
 	)
 	return i, err
 }

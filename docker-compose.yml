@@ -7,7 +7,7 @@ x-user-args: &user-args
   ORPHEUS_UID: ${ORPHEUS_UID:-1000}
   ORPHEUS_GID: ${ORPHEUS_GID:-1000}
 services:
-  app:
+  app: &app
     build:
       context: .
       dockerfile: .docker/app/dev/Dockerfile
@@ -32,6 +32,15 @@ services:
       retries: 10
       start_period: 30s
     stop_grace_period: 15s
+  worker:
+    <<: *app
+    profiles: [worker]
+    command: [go, run, ./cmd/server, worker]
+    ports: !reset []
+    environment:
+      DATABASE_URL: postgres://orpheus:orpheus@db:5432/orpheus_space
+      ORPHEUS_CONFIG_FILE: /app/orpheus-space.toml
+      PUBLIC_API_KEYS: '[]'
   tools:
     build:
       context: .

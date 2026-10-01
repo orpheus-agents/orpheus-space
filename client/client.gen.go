@@ -37,6 +37,66 @@ func (e AuthSessionMode) Valid() bool {
 	}
 }
 
+// Defines values for NullableOccurrenceState.
+const (
+	NullableOccurrenceStateAccepted    NullableOccurrenceState = "accepted"
+	NullableOccurrenceStateCancelled   NullableOccurrenceState = "cancelled"
+	NullableOccurrenceStateDispatching NullableOccurrenceState = "dispatching"
+	NullableOccurrenceStateFailed      NullableOccurrenceState = "failed"
+	NullableOccurrenceStatePending     NullableOccurrenceState = "pending"
+	NullableOccurrenceStateSkipped     NullableOccurrenceState = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the NullableOccurrenceState enum.
+func (e NullableOccurrenceState) Valid() bool {
+	switch e {
+	case NullableOccurrenceStateAccepted:
+		return true
+	case NullableOccurrenceStateCancelled:
+		return true
+	case NullableOccurrenceStateDispatching:
+		return true
+	case NullableOccurrenceStateFailed:
+		return true
+	case NullableOccurrenceStatePending:
+		return true
+	case NullableOccurrenceStateSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OccurrenceState.
+const (
+	OccurrenceStateAccepted    OccurrenceState = "accepted"
+	OccurrenceStateCancelled   OccurrenceState = "cancelled"
+	OccurrenceStateDispatching OccurrenceState = "dispatching"
+	OccurrenceStateFailed      OccurrenceState = "failed"
+	OccurrenceStatePending     OccurrenceState = "pending"
+	OccurrenceStateSkipped     OccurrenceState = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the OccurrenceState enum.
+func (e OccurrenceState) Valid() bool {
+	switch e {
+	case OccurrenceStateAccepted:
+		return true
+	case OccurrenceStateCancelled:
+		return true
+	case OccurrenceStateDispatching:
+		return true
+	case OccurrenceStateFailed:
+		return true
+	case OccurrenceStatePending:
+		return true
+	case OccurrenceStateSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SessionMode.
 const (
 	New   SessionMode = "new"
@@ -120,6 +180,76 @@ type CreateSchedule struct {
 // EnvFrom defines model for EnvFrom.
 type EnvFrom = []string
 
+// NullableOccurrence defines model for NullableOccurrence.
+type NullableOccurrence struct {
+	Attempts           int                                   `json:"attempts"`
+	CreatedAt          time.Time                             `json:"created_at"`
+	ErrorCode          nullable.Nullable[string]             `json:"error_code"`
+	ExecutionStartedAt nullable.Nullable[time.Time]          `json:"execution_started_at"`
+	FinishedAt         nullable.Nullable[time.Time]          `json:"finished_at"`
+	ID                 openapi_types.UUID                    `json:"id"`
+	NextAttemptAt      nullable.Nullable[time.Time]          `json:"next_attempt_at"`
+	ObservedAt         nullable.Nullable[time.Time]          `json:"observed_at"`
+	RunErrorCode       nullable.Nullable[string]             `json:"run_error_code"`
+	RunID              nullable.Nullable[openapi_types.UUID] `json:"run_id"`
+	RunStatus          nullable.Nullable[string]             `json:"run_status"`
+	ScheduleID         openapi_types.UUID                    `json:"schedule_id"`
+	ScheduledAt        time.Time                             `json:"scheduled_at"`
+	SessionID          nullable.Nullable[openapi_types.UUID] `json:"session_id"`
+	State              NullableOccurrenceState               `json:"state"`
+	SyncErrorCode      nullable.Nullable[string]             `json:"sync_error_code"`
+	UpdatedAt          time.Time                             `json:"updated_at"`
+}
+
+// NullableOccurrenceState defines model for NullableOccurrence.State.
+type NullableOccurrenceState string
+
+// Occurrence defines model for Occurrence.
+type Occurrence struct {
+	Attempts           int                                   `json:"attempts"`
+	CreatedAt          time.Time                             `json:"created_at"`
+	ErrorCode          nullable.Nullable[string]             `json:"error_code"`
+	ExecutionStartedAt nullable.Nullable[time.Time]          `json:"execution_started_at"`
+	FinishedAt         nullable.Nullable[time.Time]          `json:"finished_at"`
+	ID                 openapi_types.UUID                    `json:"id"`
+	NextAttemptAt      nullable.Nullable[time.Time]          `json:"next_attempt_at"`
+	ObservedAt         nullable.Nullable[time.Time]          `json:"observed_at"`
+	RunErrorCode       nullable.Nullable[string]             `json:"run_error_code"`
+	RunID              nullable.Nullable[openapi_types.UUID] `json:"run_id"`
+	RunStatus          nullable.Nullable[string]             `json:"run_status"`
+	ScheduleID         openapi_types.UUID                    `json:"schedule_id"`
+	ScheduledAt        time.Time                             `json:"scheduled_at"`
+	SessionID          nullable.Nullable[openapi_types.UUID] `json:"session_id"`
+	State              OccurrenceState                       `json:"state"`
+	SyncErrorCode      nullable.Nullable[string]             `json:"sync_error_code"`
+	UpdatedAt          time.Time                             `json:"updated_at"`
+}
+
+// OccurrenceState defines model for Occurrence.State.
+type OccurrenceState string
+
+// OccurrencePage defines model for OccurrencePage.
+type OccurrencePage struct {
+	Items      []Occurrence              `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// OccurrenceResult defines model for OccurrenceResult.
+type OccurrenceResult struct {
+	Error nullable.Nullable[struct {
+		Code    string                    `json:"code"`
+		Message string                    `json:"message"`
+		Phase   nullable.Nullable[string] `json:"phase"`
+	}] `json:"error"`
+	FetchedAt    time.Time `json:"fetched_at"`
+	FinalMessage nullable.Nullable[struct {
+		CreatedAt time.Time          `json:"created_at"`
+		ID        openapi_types.UUID `json:"id"`
+		Text      string             `json:"text"`
+	}] `json:"final_message"`
+	RunStatus string `json:"run_status"`
+}
+
 // Preview defines model for Preview.
 type Preview struct {
 	Times []time.Time `json:"times"`
@@ -146,23 +276,21 @@ type Problem struct {
 
 // Schedule defines model for Schedule.
 type Schedule struct {
-	CreatedAt time.Time                    `json:"created_at"`
-	Cron      string                       `json:"cron"`
-	DeletedAt nullable.Nullable[time.Time] `json:"deleted_at"`
-	EnvFrom   EnvFrom                      `json:"env_from"`
-	ID        openapi_types.UUID           `json:"id"`
-
-	// LastOccurrence Always null until execution support is released.
-	LastOccurrence nullable.Nullable[map[string]interface{}] `json:"last_occurrence"`
-	Model          nullable.Nullable[string]                 `json:"model"`
-	Name           string                                    `json:"name"`
-	NextRunAt      nullable.Nullable[time.Time]              `json:"next_run_at"`
-	OwnerEmail     nullable.Nullable[string]                 `json:"owner_email"`
-	Prompt         string                                    `json:"prompt"`
-	SessionMode    SessionMode                               `json:"session_mode"`
-	Status         Status                                    `json:"status"`
-	Timezone       string                                    `json:"timezone"`
-	UpdatedAt      time.Time                                 `json:"updated_at"`
+	CreatedAt      time.Time                             `json:"created_at"`
+	Cron           string                                `json:"cron"`
+	DeletedAt      nullable.Nullable[time.Time]          `json:"deleted_at"`
+	EnvFrom        EnvFrom                               `json:"env_from"`
+	ID             openapi_types.UUID                    `json:"id"`
+	LastOccurrence nullable.Nullable[NullableOccurrence] `json:"last_occurrence"`
+	Model          nullable.Nullable[string]             `json:"model"`
+	Name           string                                `json:"name"`
+	NextRunAt      nullable.Nullable[time.Time]          `json:"next_run_at"`
+	OwnerEmail     nullable.Nullable[string]             `json:"owner_email"`
+	Prompt         string                                `json:"prompt"`
+	SessionMode    SessionMode                           `json:"session_mode"`
+	Status         Status                                `json:"status"`
+	Timezone       string                                `json:"timezone"`
+	UpdatedAt      time.Time                             `json:"updated_at"`
 }
 
 // SchedulePage defines model for SchedulePage.
@@ -212,6 +340,9 @@ type IdempotencyKey = openapi_types.UUID
 // Limit defines model for Limit.
 type Limit = int
 
+// OccurrenceID defines model for OccurrenceID.
+type OccurrenceID = openapi_types.UUID
+
 // OwnerEmail defines model for OwnerEmail.
 type OwnerEmail = []string
 
@@ -236,6 +367,14 @@ type ListSchedulesParams struct {
 type CreateScheduleParams struct {
 	// IdempotencyKey Retries with the same normalized body return the original response. Keys do not expire.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// ListOccurrencesParams defines parameters for ListOccurrences.
+type ListOccurrencesParams struct {
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque position bound to normalized filters. New inserts are excluded from an ongoing traversal.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // CreateScheduleJSONRequestBody defines body for CreateSchedule for application/json ContentType.
@@ -387,6 +526,26 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/schedules/{id} (the `UpdateSchedule` operationId).
 	UpdateSchedule(ctx context.Context, id ID, body UpdateScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListOccurrences Read stored history without calling the core
+	//
+	// Corresponds with GET /api/v1/schedules/{id}/occurrences (the `ListOccurrences` operationId).
+	ListOccurrences(ctx context.Context, id ID, params *ListOccurrencesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOccurrence Read a stored occurrence without calling the core
+	//
+	// Corresponds with GET /api/v1/schedules/{id}/occurrences/{occurrence_id} (the `GetOccurrence` operationId).
+	GetOccurrence(ctx context.Context, id ID, occurrenceID OccurrenceID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOccurrenceResult Explicitly fetch the current result from the Orpheus core
+	//
+	// Corresponds with GET /api/v1/schedules/{id}/occurrences/{occurrence_id}/result (the `GetOccurrenceResult` operationId).
+	GetOccurrenceResult(ctx context.Context, id ID, occurrenceID OccurrenceID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResetSession Detach the reusable session for the next occurrence
+	//
+	// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
+	ResetSession(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetAuthSession Get browser access state
@@ -556,6 +715,66 @@ func (c *Client) UpdateScheduleWithBody(ctx context.Context, id ID, contentType 
 // Corresponds with PATCH /api/v1/schedules/{id} (the `UpdateSchedule` operationId).
 func (c *Client) UpdateSchedule(ctx context.Context, id ID, body UpdateScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateScheduleRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListOccurrences Read stored history without calling the core
+//
+// Corresponds with GET /api/v1/schedules/{id}/occurrences (the `ListOccurrences` operationId).
+func (c *Client) ListOccurrences(ctx context.Context, id ID, params *ListOccurrencesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOccurrencesRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetOccurrence Read a stored occurrence without calling the core
+//
+// Corresponds with GET /api/v1/schedules/{id}/occurrences/{occurrence_id} (the `GetOccurrence` operationId).
+func (c *Client) GetOccurrence(ctx context.Context, id ID, occurrenceID OccurrenceID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOccurrenceRequest(c.Server, id, occurrenceID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetOccurrenceResult Explicitly fetch the current result from the Orpheus core
+//
+// Corresponds with GET /api/v1/schedules/{id}/occurrences/{occurrence_id}/result (the `GetOccurrenceResult` operationId).
+func (c *Client) GetOccurrenceResult(ctx context.Context, id ID, occurrenceID OccurrenceID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOccurrenceResultRequest(c.Server, id, occurrenceID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResetSession Detach the reusable session for the next occurrence
+//
+// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
+func (c *Client) ResetSession(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetSessionRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -932,6 +1151,195 @@ func NewUpdateScheduleRequestWithBody(server string, id ID, contentType string, 
 	return req, nil
 }
 
+// NewListOccurrencesRequest constructs an http.Request for the ListOccurrences method
+func NewListOccurrencesRequest(server string, id ID, params *ListOccurrencesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/schedules/%s/occurrences", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetOccurrenceRequest constructs an http.Request for the GetOccurrence method
+func NewGetOccurrenceRequest(server string, id ID, occurrenceID OccurrenceID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "occurrence_id", occurrenceID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/schedules/%s/occurrences/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetOccurrenceResultRequest constructs an http.Request for the GetOccurrenceResult method
+func NewGetOccurrenceResultRequest(server string, id ID, occurrenceID OccurrenceID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "occurrence_id", occurrenceID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/schedules/%s/occurrences/%s/result", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewResetSessionRequest constructs an http.Request for the ResetSession method
+func NewResetSessionRequest(server string, id ID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/schedules/%s/reset-session", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -1052,6 +1460,34 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/schedules/{id} (the `UpdateSchedule` operationId).
 	UpdateScheduleWithResponse(ctx context.Context, id ID, body UpdateScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateScheduleHTTPResponse, error)
+
+	// ListOccurrencesWithResponse Read stored history without calling the core
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/schedules/{id}/occurrences (the `ListOccurrences` operationId).
+	ListOccurrencesWithResponse(ctx context.Context, id ID, params *ListOccurrencesParams, reqEditors ...RequestEditorFn) (*ListOccurrencesHTTPResponse, error)
+
+	// GetOccurrenceWithResponse Read a stored occurrence without calling the core
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/schedules/{id}/occurrences/{occurrence_id} (the `GetOccurrence` operationId).
+	GetOccurrenceWithResponse(ctx context.Context, id ID, occurrenceID OccurrenceID, reqEditors ...RequestEditorFn) (*GetOccurrenceHTTPResponse, error)
+
+	// GetOccurrenceResultWithResponse Explicitly fetch the current result from the Orpheus core
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/schedules/{id}/occurrences/{occurrence_id}/result (the `GetOccurrenceResult` operationId).
+	GetOccurrenceResultWithResponse(ctx context.Context, id ID, occurrenceID OccurrenceID, reqEditors ...RequestEditorFn) (*GetOccurrenceResultHTTPResponse, error)
+
+	// ResetSessionWithResponse Detach the reusable session for the next occurrence
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
+	ResetSessionWithResponse(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*ResetSessionHTTPResponse, error)
 }
 
 type GetAuthSessionHTTPResponse struct {
@@ -1431,6 +1867,198 @@ func (r UpdateScheduleHTTPResponse) ContentType() string {
 	return ""
 }
 
+type ListOccurrencesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OccurrencePage
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListOccurrencesHTTPResponse) GetJSON200() *OccurrencePage {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListOccurrencesHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListOccurrencesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOccurrencesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOccurrencesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListOccurrencesHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetOccurrenceHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Occurrence
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetOccurrenceHTTPResponse) GetJSON200() *Occurrence {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetOccurrenceHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetOccurrenceHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOccurrenceHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOccurrenceHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetOccurrenceHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetOccurrenceResultHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OccurrenceResult
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetOccurrenceResultHTTPResponse) GetJSON200() *OccurrenceResult {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetOccurrenceResultHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetOccurrenceResultHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOccurrenceResultHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOccurrenceResultHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetOccurrenceResultHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ResetSessionHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Schedule
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ResetSessionHTTPResponse) GetJSON200() *Schedule {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ResetSessionHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ResetSessionHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResetSessionHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResetSessionHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResetSessionHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetAuthSessionWithResponse Get browser access state
 //
 // Returns a wrapper object for the known response body format(s).
@@ -1572,6 +2200,58 @@ func (c *ClientWithResponses) UpdateScheduleWithResponse(ctx context.Context, id
 		return nil, err
 	}
 	return ParseUpdateScheduleHTTPResponse(rsp)
+}
+
+// ListOccurrencesWithResponse Read stored history without calling the core
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/schedules/{id}/occurrences (the `ListOccurrences` operationId).
+func (c *ClientWithResponses) ListOccurrencesWithResponse(ctx context.Context, id ID, params *ListOccurrencesParams, reqEditors ...RequestEditorFn) (*ListOccurrencesHTTPResponse, error) {
+	rsp, err := c.ListOccurrences(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOccurrencesHTTPResponse(rsp)
+}
+
+// GetOccurrenceWithResponse Read a stored occurrence without calling the core
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/schedules/{id}/occurrences/{occurrence_id} (the `GetOccurrence` operationId).
+func (c *ClientWithResponses) GetOccurrenceWithResponse(ctx context.Context, id ID, occurrenceID OccurrenceID, reqEditors ...RequestEditorFn) (*GetOccurrenceHTTPResponse, error) {
+	rsp, err := c.GetOccurrence(ctx, id, occurrenceID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOccurrenceHTTPResponse(rsp)
+}
+
+// GetOccurrenceResultWithResponse Explicitly fetch the current result from the Orpheus core
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/schedules/{id}/occurrences/{occurrence_id}/result (the `GetOccurrenceResult` operationId).
+func (c *ClientWithResponses) GetOccurrenceResultWithResponse(ctx context.Context, id ID, occurrenceID OccurrenceID, reqEditors ...RequestEditorFn) (*GetOccurrenceResultHTTPResponse, error) {
+	rsp, err := c.GetOccurrenceResult(ctx, id, occurrenceID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOccurrenceResultHTTPResponse(rsp)
+}
+
+// ResetSessionWithResponse Detach the reusable session for the next occurrence
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
+func (c *ClientWithResponses) ResetSessionWithResponse(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*ResetSessionHTTPResponse, error) {
+	rsp, err := c.ResetSession(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetSessionHTTPResponse(rsp)
 }
 
 // ParseGetAuthSessionHTTPResponse parses an HTTP response from a GetAuthSessionWithResponse call
@@ -1810,6 +2490,138 @@ func ParseUpdateScheduleHTTPResponse(rsp *http.Response) (*UpdateScheduleHTTPRes
 	}
 
 	response := &UpdateScheduleHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Schedule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListOccurrencesHTTPResponse parses an HTTP response from a ListOccurrencesWithResponse call
+func ParseListOccurrencesHTTPResponse(rsp *http.Response) (*ListOccurrencesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOccurrencesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OccurrencePage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOccurrenceHTTPResponse parses an HTTP response from a GetOccurrenceWithResponse call
+func ParseGetOccurrenceHTTPResponse(rsp *http.Response) (*GetOccurrenceHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOccurrenceHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Occurrence
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOccurrenceResultHTTPResponse parses an HTTP response from a GetOccurrenceResultWithResponse call
+func ParseGetOccurrenceResultHTTPResponse(rsp *http.Response) (*GetOccurrenceResultHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOccurrenceResultHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OccurrenceResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResetSessionHTTPResponse parses an HTTP response from a ResetSessionWithResponse call
+func ParseResetSessionHTTPResponse(rsp *http.Response) (*ResetSessionHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResetSessionHTTPResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func fixture(t *testing.T) string {
@@ -13,7 +14,7 @@ func fixture(t *testing.T) string {
 	if err := os.WriteFile(path, []byte("[execution.agent]\nprofile='default'\n[execution.sandbox]\ntemplate='codex'\nenv_from=['A']\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range map[string]string{"DATABASE_URL": "postgres://user:pass@localhost/db", "ORPHEUS_CONFIG_FILE": path, "PUBLIC_API_KEYS": "[\"test-key\"]", "HARNESS_ENV_ALLOWLIST": "[\"A\"]", "ORPHEUS_BROWSER_AUTH": "api_only", "ORPHEUS_PUBLIC_URL": "", "MAX_REQUEST_BYTES": "1048576", "ORPHEUS_PORT": "8000", "ORPHEUS_SYSTEM_PORT": "9100"} {
+	for k, v := range map[string]string{"WORKER_POLL_SECONDS": "1", "ORPHEUS_BASE_URL": "", "ORPHEUS_API_KEY": "", "DATABASE_URL": "postgres://user:pass@localhost/db", "ORPHEUS_CONFIG_FILE": path, "PUBLIC_API_KEYS": "[\"test-key\"]", "HARNESS_ENV_ALLOWLIST": "[\"A\"]", "ORPHEUS_BROWSER_AUTH": "api_only", "ORPHEUS_PUBLIC_URL": "", "MAX_REQUEST_BYTES": "1048576", "ORPHEUS_PORT": "8000", "ORPHEUS_SYSTEM_PORT": "9100"} {
 		t.Setenv(k, v)
 	}
 	return path
@@ -65,7 +66,7 @@ func TestExecutionConfiguration(t *testing.T) {
 		if (err == nil) != tc.valid {
 			t.Fatalf("%v %v", cfg, err)
 		}
-		if tc.valid && cfg.Execution.Agent.Instructions != "Inspect incidents" {
+		if tc.valid && (cfg.Execution.Agent.Instructions == nil || *cfg.Execution.Agent.Instructions != "Inspect incidents") {
 			t.Fatal("instructions not loaded")
 		}
 	}
@@ -81,5 +82,73 @@ func TestTOMLErrorPositionWithoutValues(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "line 2, column") || strings.Contains(err.Error(), "secret-value") {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestWorkerConfiguration(t *testing.T) {
+	fixture(t)
+	t.Setenv("PUBLIC_API_KEYS", "[]")
+	if _, err := LoadWorker(); err == nil {
+		t.Fatal("worker accepted missing core")
+	}
+	t.Setenv("ORPHEUS_BASE_URL", "http://core.test")
+	t.Setenv("ORPHEUS_API_KEY", "core-key")
+	if _, err := LoadWorker(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ORPHEUS_BASE_URL", "http://user:secret@core.test")
+	if _, err := LoadWorker(); err == nil {
+		t.Fatal("embedded credentials accepted")
+	}
+}
+
+func TestOptionalInstructions(t *testing.T) {
+	path := fixture(t)
+	cfg, err := Load()
+	if err != nil || cfg.Execution.Agent.Instructions != nil {
+		t.Fatal(cfg, err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = []byte(strings.Replace(string(raw), "profile='default'", "profile='default'\ninstructions=''", 1))
+	if err = os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load()
+	if err != nil || cfg.Execution.Agent.Instructions == nil || *cfg.Execution.Agent.Instructions != "" {
+		t.Fatal(cfg, err)
+	}
+}
+
+func TestWorkerPollInterval(t *testing.T) {
+	fixture(t)
+	if err := os.Unsetenv("WORKER_POLL_SECONDS"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil || cfg.WorkerPoll != time.Second {
+		t.Fatal(cfg.WorkerPoll, err)
+	}
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+	}{
+		{"0.25", 250 * time.Millisecond}, {"30", 30 * time.Second}, {"0", 0}, {"-1", 0}, {"invalid", 0}, {"", 0}, {"999999999999999999", 0},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			t.Setenv("WORKER_POLL_SECONDS", tc.value)
+			cfg, err := Load()
+			if tc.want == 0 {
+				if err == nil {
+					t.Fatal("invalid interval accepted")
+				}
+				return
+			}
+			if err != nil || cfg.WorkerPoll != tc.want {
+				t.Fatal(cfg.WorkerPoll, err)
+			}
+		})
 	}
 }

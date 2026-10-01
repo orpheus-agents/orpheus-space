@@ -29,12 +29,12 @@ type Input struct {
 }
 type Schedule struct {
 	Input
-	ID             uuid.UUID  `json:"id"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	NextRunAt      *time.Time `json:"next_run_at"`
-	DeletedAt      *time.Time `json:"deleted_at"`
-	LastOccurrence *struct{}  `json:"last_occurrence"`
+	ID             uuid.UUID   `json:"id"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+	NextRunAt      *time.Time  `json:"next_run_at"`
+	DeletedAt      *time.Time  `json:"deleted_at"`
+	LastOccurrence *Occurrence `json:"last_occurrence"`
 }
 type Page struct {
 	Items      []Schedule `json:"items"`

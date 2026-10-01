@@ -6,12 +6,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/orpheus-agents/orpheus-space/internal/core"
+	"github.com/orpheus-agents/orpheus-space/internal/store/db"
+	coreapi "github.com/orpheus-agents/orpheus/client"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/getkin/kin-openapi/routers/legacy"
@@ -232,4 +237,86 @@ func TestValidationDetails(t *testing.T) {
 			}
 		})
 	}
+}
+
+type resultCore struct {
+	calls int
+	run   coreapi.Run
+	err   error
+}
+
+func (c *resultCore) Run(_ context.Context, sid, rid uuid.UUID) (coreapi.Run, error) {
+	c.calls++
+	if sid != c.run.SessionID || rid != c.run.ID {
+		return coreapi.Run{}, errors.New("wrong linkage")
+	}
+	return c.run, c.err
+}
+func TestHistoryAndExplicitResult(t *testing.T) {
+	pool := testutil.Database(t)
+	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	storage := &store.Store{Pool: pool, Now: func() time.Time { return now }}
+	in := schedule.Defaults()
+	in.Name = "task"
+	in.Prompt = "prompt"
+	in.Cron = "* * * * *"
+	in.Timezone = "UTC"
+	task, err := storage.Create(t.Context(), in, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	if err = storage.Plan(t.Context(), task.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	history, err := storage.History(t.Context(), task.ID, 50, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	occ := history.Items[0]
+	cfg := config.Config{BrowserAuth: "api_only", PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
+	c := &resultCore{run: coreapi.Run{ID: uuid.New(), SessionID: uuid.New(), Status: coreapi.RunStatusCompleted, FinalMessage: &coreapi.Message{ID: uuid.New(), Text: "sensitive result", CreatedAt: now}}}
+	handler, err := Handler(&Server{Store: storage, Config: cfg, Core: c})
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"Authorization": "Bearer test-key"}
+	base := "/api/v1/schedules/" + task.ID.String()
+	path := base + "/occurrences/" + occ.ID.String()
+	request(t, handler, "GET", path+"/result", "", headers, 409)
+	request(t, handler, "POST", base+"/reset-session", "", headers, 409)
+	prepared, err := storage.Prepare(t.Context(), task.ID, occ.ID, now, func(db.Schedule, db.ScheduleOccurrence, time.Time) (store.Snapshot, error) {
+		return store.Snapshot{Path: "/api/v1/sessions", Body: []byte(`{}`), Fingerprint: "fixture"}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = storage.Accept(t.Context(), prepared, c.run.SessionID, c.run.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, url := range []string{"/api/v1/schedules", base, base + "/occurrences", path} {
+		request(t, handler, "GET", url, "", headers, 200)
+	}
+	if c.calls != 0 {
+		t.Fatal("ordinary reads called core")
+	}
+	before := request(t, handler, "GET", path, "", headers, 200).Body.String()
+	result := request(t, handler, "GET", path+"/result", "", headers, 200)
+	if c.calls != 1 || !strings.Contains(result.Body.String(), "sensitive result") {
+		t.Fatal(c.calls, result.Body.String())
+	}
+	after := request(t, handler, "GET", path, "", headers, 200).Body.String()
+	if before != after || strings.Contains(after, "sensitive result") {
+		t.Fatal("result changed local history")
+	}
+	request(t, handler, "GET", "/api/v1/schedules/"+uuid.NewString()+"/occurrences/"+occ.ID.String()+"/result", "", headers, 404)
+	if c.calls != 1 {
+		t.Fatal("foreign occurrence called core")
+	}
+	c.err = &core.Failure{Code: "unauthorized", Status: 401}
+	request(t, handler, "GET", path+"/result", "", headers, 503)
+	c.err = &core.Failure{Code: "run_not_found", Status: 404}
+	request(t, handler, "GET", path+"/result", "", headers, 404)
+	request(t, handler, "DELETE", base, "", headers, 204)
+	request(t, handler, "GET", base+"/occurrences", "", headers, 200)
 }

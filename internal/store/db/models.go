@@ -12,26 +12,56 @@ import (
 )
 
 type Schedule struct {
-	ID            uuid.UUID  `json:"id"`
-	Sequence      *int64     `json:"sequence"`
-	Name          string     `json:"name"`
-	Prompt        string     `json:"prompt"`
-	Cron          string     `json:"cron"`
-	Timezone      string     `json:"timezone"`
-	Status        string     `json:"status"`
-	Model         *string    `json:"model"`
-	SessionMode   string     `json:"session_mode"`
-	OwnerEmail    *string    `json:"owner_email"`
-	EnvFrom       []string   `json:"env_from"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	NextRunAt     *time.Time `json:"next_run_at"`
-	CronStartedAt time.Time  `json:"cron_started_at"`
-	DeletedAt     *time.Time `json:"deleted_at"`
+	ID                  uuid.UUID  `json:"id"`
+	Sequence            *int64     `json:"sequence"`
+	Name                string     `json:"name"`
+	Prompt              string     `json:"prompt"`
+	Cron                string     `json:"cron"`
+	Timezone            string     `json:"timezone"`
+	Status              string     `json:"status"`
+	Model               *string    `json:"model"`
+	SessionMode         string     `json:"session_mode"`
+	OwnerEmail          *string    `json:"owner_email"`
+	EnvFrom             []string   `json:"env_from"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	NextRunAt           *time.Time `json:"next_run_at"`
+	CronStartedAt       time.Time  `json:"cron_started_at"`
+	DeletedAt           *time.Time `json:"deleted_at"`
+	ReusableSessionID   *uuid.UUID `json:"reusable_session_id"`
+	ReusableFingerprint *string    `json:"reusable_fingerprint"`
 }
 
 type ScheduleCreateKey struct {
 	Key         uuid.UUID       `json:"key"`
 	Fingerprint string          `json:"fingerprint"`
 	Response    json.RawMessage `json:"response"`
+}
+
+type ScheduleOccurrence struct {
+	ID                 uuid.UUID  `json:"id"`
+	Sequence           *int64     `json:"sequence"`
+	ScheduleID         uuid.UUID  `json:"schedule_id"`
+	ScheduledAt        time.Time  `json:"scheduled_at"`
+	State              string     `json:"state"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	CompletedAt        *time.Time `json:"completed_at"`
+	RequestPath        *string    `json:"request_path"`
+	RequestBody        []byte     `json:"request_body"`
+	RequestKey         uuid.UUID  `json:"request_key"`
+	Fingerprint        *string    `json:"fingerprint"`
+	Reusable           bool       `json:"reusable"`
+	Uncertain          bool       `json:"uncertain"`
+	Attempts           int        `json:"attempts"`
+	NextAttemptAt      *time.Time `json:"next_attempt_at"`
+	ErrorCode          *string    `json:"error_code"`
+	SessionID          *uuid.UUID `json:"session_id"`
+	RunID              *uuid.UUID `json:"run_id"`
+	RunStatus          *string    `json:"run_status"`
+	ObservedAt         *time.Time `json:"observed_at"`
+	ExecutionStartedAt *time.Time `json:"execution_started_at"`
+	FinishedAt         *time.Time `json:"finished_at"`
+	RunErrorCode       *string    `json:"run_error_code"`
+	SyncErrorCode      *string    `json:"sync_error_code"`
 }

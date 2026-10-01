@@ -17,8 +17,12 @@ tools-build:
 start: migrate
 	$(COMPOSE) up -d --wait app
 
+.PHONY: start-worker
+start-worker: migrate
+	$(COMPOSE) --profile worker up -d --wait worker
+
 stop:
-	$(COMPOSE) --profile tools --profile test down
+	$(COMPOSE) --profile tools --profile test --profile worker down
 
 migrate:
 	$(COMPOSE) build app

@@ -45,14 +45,20 @@ func TestReadinessRequiresAllMigrations(t *testing.T) {
 	db := stdlib.OpenDBFromPool(pool)
 	defer func() { _ = db.Close() }()
 	directory := t.TempDir()
-	raw, err := os.ReadFile("../../migrations/00001_schedules.sql")
+	files, err := filepath.Glob("../../migrations/*.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(directory, "00001_schedules.sql"), raw, 0600); err != nil {
-		t.Fatal(err)
+	for _, file := range files {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(directory, filepath.Base(file)), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err = os.WriteFile(filepath.Join(directory, "00002_next.sql"), []byte("-- +goose Up\nCREATE TABLE next_stage(id int);\n-- +goose Down\nDROP TABLE next_stage;\n"), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(directory, "99999_next.sql"), []byte("-- +goose Up\nCREATE TABLE next_stage(id int);\n-- +goose Down\nDROP TABLE next_stage;\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	p, err := migrate.Provider(db, directory)

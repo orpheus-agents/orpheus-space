@@ -43,6 +43,66 @@ func (e AuthSessionMode) Valid() bool {
 	}
 }
 
+// Defines values for NullableOccurrenceState.
+const (
+	NullableOccurrenceStateAccepted    NullableOccurrenceState = "accepted"
+	NullableOccurrenceStateCancelled   NullableOccurrenceState = "cancelled"
+	NullableOccurrenceStateDispatching NullableOccurrenceState = "dispatching"
+	NullableOccurrenceStateFailed      NullableOccurrenceState = "failed"
+	NullableOccurrenceStatePending     NullableOccurrenceState = "pending"
+	NullableOccurrenceStateSkipped     NullableOccurrenceState = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the NullableOccurrenceState enum.
+func (e NullableOccurrenceState) Valid() bool {
+	switch e {
+	case NullableOccurrenceStateAccepted:
+		return true
+	case NullableOccurrenceStateCancelled:
+		return true
+	case NullableOccurrenceStateDispatching:
+		return true
+	case NullableOccurrenceStateFailed:
+		return true
+	case NullableOccurrenceStatePending:
+		return true
+	case NullableOccurrenceStateSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OccurrenceState.
+const (
+	OccurrenceStateAccepted    OccurrenceState = "accepted"
+	OccurrenceStateCancelled   OccurrenceState = "cancelled"
+	OccurrenceStateDispatching OccurrenceState = "dispatching"
+	OccurrenceStateFailed      OccurrenceState = "failed"
+	OccurrenceStatePending     OccurrenceState = "pending"
+	OccurrenceStateSkipped     OccurrenceState = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the OccurrenceState enum.
+func (e OccurrenceState) Valid() bool {
+	switch e {
+	case OccurrenceStateAccepted:
+		return true
+	case OccurrenceStateCancelled:
+		return true
+	case OccurrenceStateDispatching:
+		return true
+	case OccurrenceStateFailed:
+		return true
+	case OccurrenceStatePending:
+		return true
+	case OccurrenceStateSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SessionMode.
 const (
 	New   SessionMode = "new"
@@ -126,6 +186,76 @@ type CreateSchedule struct {
 // EnvFrom defines model for EnvFrom.
 type EnvFrom = []string
 
+// NullableOccurrence defines model for NullableOccurrence.
+type NullableOccurrence struct {
+	Attempts           int                                   `json:"attempts"`
+	CreatedAt          time.Time                             `json:"created_at"`
+	ErrorCode          nullable.Nullable[string]             `json:"error_code"`
+	ExecutionStartedAt nullable.Nullable[time.Time]          `json:"execution_started_at"`
+	FinishedAt         nullable.Nullable[time.Time]          `json:"finished_at"`
+	ID                 openapi_types.UUID                    `json:"id"`
+	NextAttemptAt      nullable.Nullable[time.Time]          `json:"next_attempt_at"`
+	ObservedAt         nullable.Nullable[time.Time]          `json:"observed_at"`
+	RunErrorCode       nullable.Nullable[string]             `json:"run_error_code"`
+	RunID              nullable.Nullable[openapi_types.UUID] `json:"run_id"`
+	RunStatus          nullable.Nullable[string]             `json:"run_status"`
+	ScheduleID         openapi_types.UUID                    `json:"schedule_id"`
+	ScheduledAt        time.Time                             `json:"scheduled_at"`
+	SessionID          nullable.Nullable[openapi_types.UUID] `json:"session_id"`
+	State              NullableOccurrenceState               `json:"state"`
+	SyncErrorCode      nullable.Nullable[string]             `json:"sync_error_code"`
+	UpdatedAt          time.Time                             `json:"updated_at"`
+}
+
+// NullableOccurrenceState defines model for NullableOccurrence.State.
+type NullableOccurrenceState string
+
+// Occurrence defines model for Occurrence.
+type Occurrence struct {
+	Attempts           int                                   `json:"attempts"`
+	CreatedAt          time.Time                             `json:"created_at"`
+	ErrorCode          nullable.Nullable[string]             `json:"error_code"`
+	ExecutionStartedAt nullable.Nullable[time.Time]          `json:"execution_started_at"`
+	FinishedAt         nullable.Nullable[time.Time]          `json:"finished_at"`
+	ID                 openapi_types.UUID                    `json:"id"`
+	NextAttemptAt      nullable.Nullable[time.Time]          `json:"next_attempt_at"`
+	ObservedAt         nullable.Nullable[time.Time]          `json:"observed_at"`
+	RunErrorCode       nullable.Nullable[string]             `json:"run_error_code"`
+	RunID              nullable.Nullable[openapi_types.UUID] `json:"run_id"`
+	RunStatus          nullable.Nullable[string]             `json:"run_status"`
+	ScheduleID         openapi_types.UUID                    `json:"schedule_id"`
+	ScheduledAt        time.Time                             `json:"scheduled_at"`
+	SessionID          nullable.Nullable[openapi_types.UUID] `json:"session_id"`
+	State              OccurrenceState                       `json:"state"`
+	SyncErrorCode      nullable.Nullable[string]             `json:"sync_error_code"`
+	UpdatedAt          time.Time                             `json:"updated_at"`
+}
+
+// OccurrenceState defines model for Occurrence.State.
+type OccurrenceState string
+
+// OccurrencePage defines model for OccurrencePage.
+type OccurrencePage struct {
+	Items      []Occurrence              `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// OccurrenceResult defines model for OccurrenceResult.
+type OccurrenceResult struct {
+	Error nullable.Nullable[struct {
+		Code    string                    `json:"code"`
+		Message string                    `json:"message"`
+		Phase   nullable.Nullable[string] `json:"phase"`
+	}] `json:"error"`
+	FetchedAt    time.Time `json:"fetched_at"`
+	FinalMessage nullable.Nullable[struct {
+		CreatedAt time.Time          `json:"created_at"`
+		ID        openapi_types.UUID `json:"id"`
+		Text      string             `json:"text"`
+	}] `json:"final_message"`
+	RunStatus string `json:"run_status"`
+}
+
 // Preview defines model for Preview.
 type Preview struct {
 	Times []time.Time `json:"times"`
@@ -152,23 +282,21 @@ type Problem struct {
 
 // Schedule defines model for Schedule.
 type Schedule struct {
-	CreatedAt time.Time                    `json:"created_at"`
-	Cron      string                       `json:"cron"`
-	DeletedAt nullable.Nullable[time.Time] `json:"deleted_at"`
-	EnvFrom   EnvFrom                      `json:"env_from"`
-	ID        openapi_types.UUID           `json:"id"`
-
-	// LastOccurrence Always null until execution support is released.
-	LastOccurrence nullable.Nullable[map[string]interface{}] `json:"last_occurrence"`
-	Model          nullable.Nullable[string]                 `json:"model"`
-	Name           string                                    `json:"name"`
-	NextRunAt      nullable.Nullable[time.Time]              `json:"next_run_at"`
-	OwnerEmail     nullable.Nullable[string]                 `json:"owner_email"`
-	Prompt         string                                    `json:"prompt"`
-	SessionMode    SessionMode                               `json:"session_mode"`
-	Status         Status                                    `json:"status"`
-	Timezone       string                                    `json:"timezone"`
-	UpdatedAt      time.Time                                 `json:"updated_at"`
+	CreatedAt      time.Time                             `json:"created_at"`
+	Cron           string                                `json:"cron"`
+	DeletedAt      nullable.Nullable[time.Time]          `json:"deleted_at"`
+	EnvFrom        EnvFrom                               `json:"env_from"`
+	ID             openapi_types.UUID                    `json:"id"`
+	LastOccurrence nullable.Nullable[NullableOccurrence] `json:"last_occurrence"`
+	Model          nullable.Nullable[string]             `json:"model"`
+	Name           string                                `json:"name"`
+	NextRunAt      nullable.Nullable[time.Time]          `json:"next_run_at"`
+	OwnerEmail     nullable.Nullable[string]             `json:"owner_email"`
+	Prompt         string                                `json:"prompt"`
+	SessionMode    SessionMode                           `json:"session_mode"`
+	Status         Status                                `json:"status"`
+	Timezone       string                                `json:"timezone"`
+	UpdatedAt      time.Time                             `json:"updated_at"`
 }
 
 // SchedulePage defines model for SchedulePage.
@@ -218,6 +346,9 @@ type IdempotencyKey = openapi_types.UUID
 // Limit defines model for Limit.
 type Limit = int
 
+// OccurrenceID defines model for OccurrenceID.
+type OccurrenceID = openapi_types.UUID
+
 // OwnerEmail defines model for OwnerEmail.
 type OwnerEmail = []string
 
@@ -242,6 +373,14 @@ type ListSchedulesParams struct {
 type CreateScheduleParams struct {
 	// IdempotencyKey Retries with the same normalized body return the original response. Keys do not expire.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// ListOccurrencesParams defines parameters for ListOccurrences.
+type ListOccurrencesParams struct {
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque position bound to normalized filters. New inserts are excluded from an ongoing traversal.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // CreateScheduleJSONRequestBody defines body for CreateSchedule for application/json ContentType.
@@ -279,6 +418,18 @@ type ServerInterface interface {
 	// UpdateSchedule Update selected schedule fields
 	// (PATCH /api/v1/schedules/{id})
 	UpdateSchedule(w http.ResponseWriter, r *http.Request, id ID)
+	// ListOccurrences Read stored history without calling the core
+	// (GET /api/v1/schedules/{id}/occurrences)
+	ListOccurrences(w http.ResponseWriter, r *http.Request, id ID, params ListOccurrencesParams)
+	// GetOccurrence Read a stored occurrence without calling the core
+	// (GET /api/v1/schedules/{id}/occurrences/{occurrence_id})
+	GetOccurrence(w http.ResponseWriter, r *http.Request, id ID, occurrenceID OccurrenceID)
+	// GetOccurrenceResult Explicitly fetch the current result from the Orpheus core
+	// (GET /api/v1/schedules/{id}/occurrences/{occurrence_id}/result)
+	GetOccurrenceResult(w http.ResponseWriter, r *http.Request, id ID, occurrenceID OccurrenceID)
+	// ResetSession Detach the reusable session for the next occurrence
+	// (POST /api/v1/schedules/{id}/reset-session)
+	ResetSession(w http.ResponseWriter, r *http.Request, id ID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -536,6 +687,157 @@ func (siw *ServerInterfaceWrapper) UpdateSchedule(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListOccurrences operation middleware
+func (siw *ServerInterfaceWrapper) ListOccurrences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOccurrencesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOccurrences(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOccurrence operation middleware
+func (siw *ServerInterfaceWrapper) GetOccurrence(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "occurrence_id" -------------
+	var occurrenceID OccurrenceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "occurrence_id", r.PathValue("occurrence_id"), &occurrenceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "occurrence_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOccurrence(w, r, id, occurrenceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOccurrenceResult operation middleware
+func (siw *ServerInterfaceWrapper) GetOccurrenceResult(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "occurrence_id" -------------
+	var occurrenceID OccurrenceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "occurrence_id", r.PathValue("occurrence_id"), &occurrenceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "occurrence_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOccurrenceResult(w, r, id, occurrenceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetSession operation middleware
+func (siw *ServerInterfaceWrapper) ResetSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetSession(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -664,6 +966,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schedules/settings", wrapper.GetSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/schedules/preview", wrapper.PreviewSchedule)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/session", wrapper.GetAuthSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schedules/{id}/occurrences", wrapper.ListOccurrences)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schedules/{id}/occurrences/{occurrence_id}", wrapper.GetOccurrence)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schedules/{id}/occurrences/{occurrence_id}/result", wrapper.GetOccurrenceResult)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/schedules/{id}/reset-session", wrapper.ResetSession)
 
 	return m
 }
@@ -976,6 +1282,165 @@ func (response UpdateScheduledefaultJSONResponse) VisitUpdateScheduleResponse(w 
 	return err
 }
 
+type ListOccurrencesRequestObject struct {
+	ID     ID `json:"id"`
+	Params ListOccurrencesParams
+}
+
+type ListOccurrencesResponseObject interface {
+	VisitListOccurrencesResponse(w http.ResponseWriter) error
+}
+
+type ListOccurrences200JSONResponse OccurrencePage
+
+func (response ListOccurrences200JSONResponse) VisitListOccurrencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOccurrencesdefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListOccurrencesdefaultJSONResponse) VisitListOccurrencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOccurrenceRequestObject struct {
+	ID           ID           `json:"id"`
+	OccurrenceID OccurrenceID `json:"occurrence_id"`
+}
+
+type GetOccurrenceResponseObject interface {
+	VisitGetOccurrenceResponse(w http.ResponseWriter) error
+}
+
+type GetOccurrence200JSONResponse Occurrence
+
+func (response GetOccurrence200JSONResponse) VisitGetOccurrenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOccurrencedefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetOccurrencedefaultJSONResponse) VisitGetOccurrenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOccurrenceResultRequestObject struct {
+	ID           ID           `json:"id"`
+	OccurrenceID OccurrenceID `json:"occurrence_id"`
+}
+
+type GetOccurrenceResultResponseObject interface {
+	VisitGetOccurrenceResultResponse(w http.ResponseWriter) error
+}
+
+type GetOccurrenceResult200JSONResponse OccurrenceResult
+
+func (response GetOccurrenceResult200JSONResponse) VisitGetOccurrenceResultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOccurrenceResultdefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetOccurrenceResultdefaultJSONResponse) VisitGetOccurrenceResultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetSessionRequestObject struct {
+	ID ID `json:"id"`
+}
+
+type ResetSessionResponseObject interface {
+	VisitResetSessionResponse(w http.ResponseWriter) error
+}
+
+type ResetSession200JSONResponse Schedule
+
+func (response ResetSession200JSONResponse) VisitResetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetSessiondefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ResetSessiondefaultJSONResponse) VisitResetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetAuthSession Get browser access state
@@ -1002,6 +1467,18 @@ type StrictServerInterface interface {
 	// UpdateSchedule Update selected schedule fields
 	// (PATCH /api/v1/schedules/{id})
 	UpdateSchedule(ctx context.Context, request UpdateScheduleRequestObject) (UpdateScheduleResponseObject, error)
+	// ListOccurrences Read stored history without calling the core
+	// (GET /api/v1/schedules/{id}/occurrences)
+	ListOccurrences(ctx context.Context, request ListOccurrencesRequestObject) (ListOccurrencesResponseObject, error)
+	// GetOccurrence Read a stored occurrence without calling the core
+	// (GET /api/v1/schedules/{id}/occurrences/{occurrence_id})
+	GetOccurrence(ctx context.Context, request GetOccurrenceRequestObject) (GetOccurrenceResponseObject, error)
+	// GetOccurrenceResult Explicitly fetch the current result from the Orpheus core
+	// (GET /api/v1/schedules/{id}/occurrences/{occurrence_id}/result)
+	GetOccurrenceResult(ctx context.Context, request GetOccurrenceResultRequestObject) (GetOccurrenceResultResponseObject, error)
+	// ResetSession Detach the reusable session for the next occurrence
+	// (POST /api/v1/schedules/{id}/reset-session)
+	ResetSession(ctx context.Context, request ResetSessionRequestObject) (ResetSessionResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1266,44 +1743,159 @@ func (sh *strictHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// ListOccurrences operation middleware
+func (sh *strictHandler) ListOccurrences(w http.ResponseWriter, r *http.Request, id ID, params ListOccurrencesParams) {
+	var request ListOccurrencesRequestObject
+
+	request.ID = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOccurrences(ctx, request.(ListOccurrencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOccurrences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOccurrencesResponseObject); ok {
+		if err := validResponse.VisitListOccurrencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOccurrence operation middleware
+func (sh *strictHandler) GetOccurrence(w http.ResponseWriter, r *http.Request, id ID, occurrenceID OccurrenceID) {
+	var request GetOccurrenceRequestObject
+
+	request.ID = id
+	request.OccurrenceID = occurrenceID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOccurrence(ctx, request.(GetOccurrenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOccurrence")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOccurrenceResponseObject); ok {
+		if err := validResponse.VisitGetOccurrenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOccurrenceResult operation middleware
+func (sh *strictHandler) GetOccurrenceResult(w http.ResponseWriter, r *http.Request, id ID, occurrenceID OccurrenceID) {
+	var request GetOccurrenceResultRequestObject
+
+	request.ID = id
+	request.OccurrenceID = occurrenceID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOccurrenceResult(ctx, request.(GetOccurrenceResultRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOccurrenceResult")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOccurrenceResultResponseObject); ok {
+		if err := validResponse.VisitGetOccurrenceResultResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResetSession operation middleware
+func (sh *strictHandler) ResetSession(w http.ResponseWriter, r *http.Request, id ID) {
+	var request ResetSessionRequestObject
+
+	request.ID = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResetSession(ctx, request.(ResetSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResetSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResetSessionResponseObject); ok {
+		if err := validResponse.VisitResetSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"0THUZgYJ1rfr/w0A",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
