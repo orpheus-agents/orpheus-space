@@ -28,3 +28,9 @@ transfer ownership through this conversational workflow.
 
 These are agent behavior rules. The API grants access to all API key holders;
 do not promise server-enforced ownership isolation.
+
+Link the task name using the returned `url` after creating a schedule and when
+summarizing completed changes. During a multi-turn edit, save the link for the
+completion summary; do not repeat it in every clarification or progress reply.
+Repeat it when the user asks for it or needs to open the task. If `url` is null,
+omit the link rather than constructing one from the CLI host or task ID.

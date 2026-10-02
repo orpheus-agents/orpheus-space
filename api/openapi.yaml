@@ -519,6 +519,7 @@ components:
       additionalProperties: false
       required:
       - id
+      - url
       - name
       - prompt
       - cron
@@ -534,6 +535,11 @@ components:
       - deleted_at
       - last_occurrence
       properties:
+        url:
+          type: string
+          format: uri
+          nullable: true
+          description: Absolute Space Web card URL from ORPHEUS_PUBLIC_URL, or null when not configured. Computed at response time.
         name:
           type: string
           minLength: 1

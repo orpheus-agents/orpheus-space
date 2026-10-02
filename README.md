@@ -63,6 +63,12 @@ provider-specific aliases are not merged. List order is `(created_at DESC, id DE
 Pass `next_cursor` back as `cursor` with the same filters. New inserts do not enter
 an ongoing traversal; edits and deletions reflect current data.
 
+Each schedule object includes `url`, an absolute Space Web card link built from
+`ORPHEUS_PUBLIC_URL`, or null when that setting is absent. Links use the configured
+public origin, not request headers or the CLI host. They are computed at response
+time, including idempotent replays; changing the public origin updates links
+without changing stored schedules.
+
 Create requires name, prompt, five-field cron and IANA timezone. Defaults are
 `status=active`, `session_mode=new`, `model=null`, `owner_email=null`, `env_from=[]`.
 Macros, seconds, years and inline TZ are rejected. `Local` is not a timezone input.
@@ -132,7 +138,7 @@ Missing runs return 404, not-started occurrences 409, and core auth/network fail
 | `DATABASE_URL` | Space's PostgreSQL DSN; required |
 | `PUBLIC_API_KEYS` | JSON array of Space Bearer keys |
 | `ORPHEUS_BROWSER_AUTH` | `api_only` (default), explicit local `anonymous`, or `saml` |
-| `ORPHEUS_PUBLIC_URL` | Exact HTTP(S) origin; required for browser writes; HTTPS for SAML |
+| `ORPHEUS_PUBLIC_URL` | Exact HTTP(S) origin; web origin for schedule links and browser writes; HTTPS for SAML |
 | `ORPHEUS_CONFIG_FILE` | Base execution TOML, default `orpheus-space.toml` |
 | `ORPHEUS_MIGRATIONS_DIR` | Goose files, default `migrations` |
 | `HARNESS_ENV_ALLOWLIST` | JSON array of permitted ENV names |

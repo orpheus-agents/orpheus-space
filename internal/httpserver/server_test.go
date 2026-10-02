@@ -320,3 +320,68 @@ func TestHistoryAndExplicitResult(t *testing.T) {
 	request(t, handler, "DELETE", base, "", headers, 204)
 	request(t, handler, "GET", base+"/occurrences", "", headers, 200)
 }
+
+func TestScheduleURLs(t *testing.T) {
+	for _, origin := range []string{"https://space.example.com", "http://localhost:8080", "http://[::1]:8080", ""} {
+		t.Run(origin, func(t *testing.T) {
+			cfg := config.Config{Auth: config.BrowserAuth{Mode: "api_only", PublicURL: origin}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: 4096}
+			s := &Server{Store: &store.Store{Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv}, Config: cfg}
+			h, err := Handler(s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			headers := map[string]string{"Authorization": "Bearer test-key", "Idempotency-Key": uuid.NewString(), "Forwarded": "host=evil.test;proto=https", "X-Forwarded-Host": "evil.test"}
+			first := request(t, h, "POST", "/api/v1/schedules", createBody, headers, 201)
+			var task client.Schedule
+			if err := json.Unmarshal(first.Body.Bytes(), &task); err != nil {
+				t.Fatal(err)
+			}
+			want := ""
+			if origin != "" {
+				want = origin + "/schedules/" + task.ID.String()
+			}
+			check := func(w *httptest.ResponseRecorder) {
+				t.Helper()
+				var got map[string]json.RawMessage
+				if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+					t.Fatal(err)
+				}
+				raw, ok := got["url"]
+				if !ok {
+					t.Fatal("missing url")
+				}
+				var link *string
+				if err := json.Unmarshal(raw, &link); err != nil {
+					t.Fatal(err)
+				}
+				if want == "" && link != nil || want != "" && (link == nil || *link != want) {
+					t.Fatalf("url=%s want=%q", raw, want)
+				}
+			}
+			check(first)
+			path := "/api/v1/schedules/" + task.ID.String()
+			check(request(t, h, "GET", path, "", headers, 200))
+			check(request(t, h, "PATCH", path, `{"status":"paused"}`, headers, 200))
+			check(request(t, h, "POST", path+"/reset-session", "", headers, 200))
+			page := request(t, h, "GET", "/api/v1/schedules", "", headers, 200)
+			var list struct {
+				Items []json.RawMessage `json:"items"`
+			}
+			if err := json.Unmarshal(page.Body.Bytes(), &list); err != nil {
+				t.Fatal(err)
+			}
+			if len(list.Items) != 1 {
+				t.Fatal("unexpected list", page.Body.String())
+			}
+			item := httptest.NewRecorder()
+			_, _ = item.Write(list.Items[0])
+			check(item)
+			request(t, h, "DELETE", path, "", headers, 204)
+			check(request(t, h, "GET", path, "", headers, 200))
+			// A new public origin applies to old idempotency snapshots as well.
+			s.Config.Auth.PublicURL = "https://new.example.com"
+			want = s.Config.Auth.PublicURL + "/schedules/" + task.ID.String()
+			check(request(t, h, "POST", "/api/v1/schedules", createBody, headers, 201))
+		})
+	}
+}

@@ -59,7 +59,7 @@ func command(input io.Reader, output io.Writer, getenv func(string) string, vers
 	root.PersistentFlags().StringVar(&o.host, "host", o.host, "Space origin (ORPHEUS_SPACE_HOST); no /api/v1 path")
 	root.PersistentFlags().Lookup("host").DefValue = "" // Do not echo environment configuration in help.
 	root.PersistentFlags().BoolVar(&o.json, "json", false, "Emit compact JSON (default: indented JSON)")
-	group := &cobra.Command{Use: "schedule", Short: "Manage schedules; key comes from ORPHEUS_SPACE_API_KEY"}
+	group := &cobra.Command{Use: "schedule", Short: "Manage schedules; key comes from ORPHEUS_SPACE_API_KEY", Long: "Manage schedules through the Space API. Schedule JSON includes url, the public web card link, or null when the server has no public URL configured."}
 	root.AddCommand(group)
 	for _, name := range []string{"list", "history"} {
 		var owners []string
