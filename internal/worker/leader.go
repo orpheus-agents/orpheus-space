@@ -6,6 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/orpheus-agents/orpheus-space/internal/store"
+	"github.com/orpheus-agents/orpheus-space/internal/store/db"
+
 	"github.com/jackc/pgx/v5"
 )
 
@@ -46,6 +49,9 @@ func (w *Worker) Run(ctx context.Context, lease *Lease) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	w.Check = lease.Check
+	cleanupDone := make(chan struct{})
+	go func() { defer close(cleanupDone); store.CleanupBrowserAuth(ctx, db.New(w.Store.Pool)) }()
+	defer func() { cancel(); <-cleanupDone }()
 	poll := w.Poll
 	if poll <= 0 {
 		poll = time.Second

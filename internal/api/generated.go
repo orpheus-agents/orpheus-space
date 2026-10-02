@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -29,6 +30,7 @@ import (
 const (
 	AuthSessionModeAPIOnly   AuthSessionMode = "api_only"
 	AuthSessionModeAnonymous AuthSessionMode = "anonymous"
+	AuthSessionModeSaml      AuthSessionMode = "saml"
 )
 
 // Valid indicates whether the value is a known member of the AuthSessionMode enum.
@@ -38,35 +40,7 @@ func (e AuthSessionMode) Valid() bool {
 		return true
 	case AuthSessionModeAnonymous:
 		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for NullableOccurrenceState.
-const (
-	NullableOccurrenceStateAccepted    NullableOccurrenceState = "accepted"
-	NullableOccurrenceStateCancelled   NullableOccurrenceState = "cancelled"
-	NullableOccurrenceStateDispatching NullableOccurrenceState = "dispatching"
-	NullableOccurrenceStateFailed      NullableOccurrenceState = "failed"
-	NullableOccurrenceStatePending     NullableOccurrenceState = "pending"
-	NullableOccurrenceStateSkipped     NullableOccurrenceState = "skipped"
-)
-
-// Valid indicates whether the value is a known member of the NullableOccurrenceState enum.
-func (e NullableOccurrenceState) Valid() bool {
-	switch e {
-	case NullableOccurrenceStateAccepted:
-		return true
-	case NullableOccurrenceStateCancelled:
-		return true
-	case NullableOccurrenceStateDispatching:
-		return true
-	case NullableOccurrenceStateFailed:
-		return true
-	case NullableOccurrenceStatePending:
-		return true
-	case NullableOccurrenceStateSkipped:
+	case AuthSessionModeSaml:
 		return true
 	default:
 		return false
@@ -75,28 +49,28 @@ func (e NullableOccurrenceState) Valid() bool {
 
 // Defines values for OccurrenceState.
 const (
-	OccurrenceStateAccepted    OccurrenceState = "accepted"
-	OccurrenceStateCancelled   OccurrenceState = "cancelled"
-	OccurrenceStateDispatching OccurrenceState = "dispatching"
-	OccurrenceStateFailed      OccurrenceState = "failed"
-	OccurrenceStatePending     OccurrenceState = "pending"
-	OccurrenceStateSkipped     OccurrenceState = "skipped"
+	Accepted    OccurrenceState = "accepted"
+	Cancelled   OccurrenceState = "cancelled"
+	Dispatching OccurrenceState = "dispatching"
+	Failed      OccurrenceState = "failed"
+	Pending     OccurrenceState = "pending"
+	Skipped     OccurrenceState = "skipped"
 )
 
 // Valid indicates whether the value is a known member of the OccurrenceState enum.
 func (e OccurrenceState) Valid() bool {
 	switch e {
-	case OccurrenceStateAccepted:
+	case Accepted:
 		return true
-	case OccurrenceStateCancelled:
+	case Cancelled:
 		return true
-	case OccurrenceStateDispatching:
+	case Dispatching:
 		return true
-	case OccurrenceStateFailed:
+	case Failed:
 		return true
-	case OccurrenceStatePending:
+	case Pending:
 		return true
-	case OccurrenceStateSkipped:
+	case Skipped:
 		return true
 	default:
 		return false
@@ -125,6 +99,7 @@ func (e SessionMode) Valid() bool {
 const (
 	SettingsBrowserAuthAPIOnly   SettingsBrowserAuth = "api_only"
 	SettingsBrowserAuthAnonymous SettingsBrowserAuth = "anonymous"
+	SettingsBrowserAuthSaml      SettingsBrowserAuth = "saml"
 )
 
 // Valid indicates whether the value is a known member of the SettingsBrowserAuth enum.
@@ -133,6 +108,8 @@ func (e SettingsBrowserAuth) Valid() bool {
 	case SettingsBrowserAuthAPIOnly:
 		return true
 	case SettingsBrowserAuthAnonymous:
+		return true
+	case SettingsBrowserAuthSaml:
 		return true
 	default:
 		return false
@@ -159,12 +136,15 @@ func (e Status) Valid() bool {
 
 // AuthSession defines model for AuthSession.
 type AuthSession struct {
-	Authenticated bool                                      `json:"authenticated"`
-	ExpiresAt     nullable.Nullable[time.Time]              `json:"expires_at"`
-	Mode          AuthSessionMode                           `json:"mode"`
-	ReadAccess    bool                                      `json:"read_access"`
-	User          nullable.Nullable[map[string]interface{}] `json:"user"`
-	WriteAccess   bool                                      `json:"write_access"`
+	Authenticated bool                         `json:"authenticated"`
+	ExpiresAt     nullable.Nullable[time.Time] `json:"expires_at"`
+	Mode          AuthSessionMode              `json:"mode"`
+	ReadAccess    bool                         `json:"read_access"`
+	User          nullable.Nullable[struct {
+		DisplayName string `json:"display_name"`
+		Subject     string `json:"subject"`
+	}] `json:"user"`
+	WriteAccess bool `json:"write_access"`
 }
 
 // AuthSessionMode defines model for AuthSession.Mode.
@@ -202,13 +182,10 @@ type NullableOccurrence struct {
 	ScheduleID         openapi_types.UUID                    `json:"schedule_id"`
 	ScheduledAt        time.Time                             `json:"scheduled_at"`
 	SessionID          nullable.Nullable[openapi_types.UUID] `json:"session_id"`
-	State              NullableOccurrenceState               `json:"state"`
+	State              OccurrenceState                       `json:"state"`
 	SyncErrorCode      nullable.Nullable[string]             `json:"sync_error_code"`
 	UpdatedAt          time.Time                             `json:"updated_at"`
 }
-
-// NullableOccurrenceState defines model for NullableOccurrence.State.
-type NullableOccurrenceState string
 
 // Occurrence defines model for Occurrence.
 type Occurrence struct {
@@ -231,9 +208,6 @@ type Occurrence struct {
 	UpdatedAt          time.Time                             `json:"updated_at"`
 }
 
-// OccurrenceState defines model for Occurrence.State.
-type OccurrenceState string
-
 // OccurrencePage defines model for OccurrencePage.
 type OccurrencePage struct {
 	Items      []Occurrence              `json:"items"`
@@ -255,6 +229,9 @@ type OccurrenceResult struct {
 	}] `json:"final_message"`
 	RunStatus string `json:"run_status"`
 }
+
+// OccurrenceState defines model for OccurrenceState.
+type OccurrenceState string
 
 // Preview defines model for Preview.
 type Preview struct {
@@ -383,6 +360,11 @@ type ListOccurrencesParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// BrowserLoginParams defines parameters for BrowserLogin.
+type BrowserLoginParams struct {
+	Next *string `form:"next,omitempty" json:"next,omitempty"`
+}
+
 // CreateScheduleJSONRequestBody defines body for CreateSchedule for application/json ContentType.
 type CreateScheduleJSONRequestBody = CreateSchedule
 
@@ -430,6 +412,18 @@ type ServerInterface interface {
 	// ResetSession Detach the reusable session for the next occurrence
 	// (POST /api/v1/schedules/{id}/reset-session)
 	ResetSession(w http.ResponseWriter, r *http.Request, id ID)
+	// BrowserCallback Consume a signed SAML HTTP-POST response
+	// (POST /auth/callback)
+	BrowserCallback(w http.ResponseWriter, r *http.Request)
+	// BrowserLogin Start SP-initiated SAML login
+	// (GET /auth/login)
+	BrowserLogin(w http.ResponseWriter, r *http.Request, params BrowserLoginParams)
+	// BrowserLogout Revoke the local browser session
+	// (POST /auth/logout)
+	BrowserLogout(w http.ResponseWriter, r *http.Request)
+	// SamlMetadata Read service provider metadata
+	// (GET /saml/metadata)
+	SamlMetadata(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -838,6 +832,81 @@ func (siw *ServerInterfaceWrapper) ResetSession(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// BrowserCallback operation middleware
+func (siw *ServerInterfaceWrapper) BrowserCallback(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BrowserCallback(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BrowserLogin operation middleware
+func (siw *ServerInterfaceWrapper) BrowserLogin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params BrowserLoginParams
+
+	// ------------- Optional query parameter "next" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "next", r.URL.Query(), &params.Next, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "next"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "next", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BrowserLogin(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BrowserLogout operation middleware
+func (siw *ServerInterfaceWrapper) BrowserLogout(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BrowserLogout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SamlMetadata operation middleware
+func (siw *ServerInterfaceWrapper) SamlMetadata(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SamlMetadata(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -970,6 +1039,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schedules/{id}/occurrences/{occurrence_id}", wrapper.GetOccurrence)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schedules/{id}/occurrences/{occurrence_id}/result", wrapper.GetOccurrenceResult)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/schedules/{id}/reset-session", wrapper.ResetSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/login", wrapper.BrowserLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/callback", wrapper.BrowserCallback)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.BrowserLogout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/saml/metadata", wrapper.SamlMetadata)
 
 	return m
 }
@@ -1441,6 +1514,163 @@ func (response ResetSessiondefaultJSONResponse) VisitResetSessionResponse(w http
 	return err
 }
 
+type BrowserCallbackRequestObject struct {
+}
+
+type BrowserCallbackResponseObject interface {
+	VisitBrowserCallbackResponse(w http.ResponseWriter) error
+}
+
+type BrowserCallback303ResponseHeaders struct {
+	Location *string
+}
+
+type BrowserCallback303Response struct {
+	Headers BrowserCallback303ResponseHeaders
+}
+
+func (response BrowserCallback303Response) VisitBrowserCallbackResponse(w http.ResponseWriter) error {
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(303)
+	return nil
+}
+
+type BrowserCallbackdefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response BrowserCallbackdefaultJSONResponse) VisitBrowserCallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BrowserLoginRequestObject struct {
+	Params BrowserLoginParams
+}
+
+type BrowserLoginResponseObject interface {
+	VisitBrowserLoginResponse(w http.ResponseWriter) error
+}
+
+type BrowserLogin302ResponseHeaders struct {
+	Location *string
+}
+
+type BrowserLogin302Response struct {
+	Headers BrowserLogin302ResponseHeaders
+}
+
+func (response BrowserLogin302Response) VisitBrowserLoginResponse(w http.ResponseWriter) error {
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(302)
+	return nil
+}
+
+type BrowserLogindefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response BrowserLogindefaultJSONResponse) VisitBrowserLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BrowserLogoutRequestObject struct {
+}
+
+type BrowserLogoutResponseObject interface {
+	VisitBrowserLogoutResponse(w http.ResponseWriter) error
+}
+
+type BrowserLogout204Response struct {
+}
+
+func (response BrowserLogout204Response) VisitBrowserLogoutResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type BrowserLogoutdefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response BrowserLogoutdefaultJSONResponse) VisitBrowserLogoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SamlMetadataRequestObject struct {
+}
+
+type SamlMetadataResponseObject interface {
+	VisitSamlMetadataResponse(w http.ResponseWriter) error
+}
+
+type SamlMetadata200ApplicationSamlmetadataXMLResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response SamlMetadata200ApplicationSamlmetadataXMLResponse) VisitSamlMetadataResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/samlmetadata+xml")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type SamlMetadatadefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response SamlMetadatadefaultJSONResponse) VisitSamlMetadataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetAuthSession Get browser access state
@@ -1479,6 +1709,18 @@ type StrictServerInterface interface {
 	// ResetSession Detach the reusable session for the next occurrence
 	// (POST /api/v1/schedules/{id}/reset-session)
 	ResetSession(ctx context.Context, request ResetSessionRequestObject) (ResetSessionResponseObject, error)
+	// BrowserCallback Consume a signed SAML HTTP-POST response
+	// (POST /auth/callback)
+	BrowserCallback(ctx context.Context, request BrowserCallbackRequestObject) (BrowserCallbackResponseObject, error)
+	// BrowserLogin Start SP-initiated SAML login
+	// (GET /auth/login)
+	BrowserLogin(ctx context.Context, request BrowserLoginRequestObject) (BrowserLoginResponseObject, error)
+	// BrowserLogout Revoke the local browser session
+	// (POST /auth/logout)
+	BrowserLogout(ctx context.Context, request BrowserLogoutRequestObject) (BrowserLogoutResponseObject, error)
+	// SamlMetadata Read service provider metadata
+	// (GET /saml/metadata)
+	SamlMetadata(ctx context.Context, request SamlMetadataRequestObject) (SamlMetadataResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1850,52 +2092,162 @@ func (sh *strictHandler) ResetSession(w http.ResponseWriter, r *http.Request, id
 	}
 }
 
+// BrowserCallback operation middleware
+func (sh *strictHandler) BrowserCallback(w http.ResponseWriter, r *http.Request) {
+	var request BrowserCallbackRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BrowserCallback(ctx, request.(BrowserCallbackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BrowserCallback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BrowserCallbackResponseObject); ok {
+		if err := validResponse.VisitBrowserCallbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BrowserLogin operation middleware
+func (sh *strictHandler) BrowserLogin(w http.ResponseWriter, r *http.Request, params BrowserLoginParams) {
+	var request BrowserLoginRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BrowserLogin(ctx, request.(BrowserLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BrowserLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BrowserLoginResponseObject); ok {
+		if err := validResponse.VisitBrowserLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BrowserLogout operation middleware
+func (sh *strictHandler) BrowserLogout(w http.ResponseWriter, r *http.Request) {
+	var request BrowserLogoutRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BrowserLogout(ctx, request.(BrowserLogoutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BrowserLogout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BrowserLogoutResponseObject); ok {
+		if err := validResponse.VisitBrowserLogoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SamlMetadata operation middleware
+func (sh *strictHandler) SamlMetadata(w http.ResponseWriter, r *http.Request) {
+	var request SamlMetadataRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SamlMetadata(ctx, request.(SamlMetadataRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SamlMetadata")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SamlMetadataResponseObject); ok {
+		if err := validResponse.VisitSamlMetadataResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"0THUZgYJ1rfr/w0A",
+	"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",
+	"uZbXy/8MAA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

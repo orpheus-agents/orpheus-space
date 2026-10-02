@@ -18,6 +18,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/orpheus-agents/orpheus-space/internal/browserauth"
+
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/getkin/kin-openapi/routers/legacy"
@@ -54,6 +57,16 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	}{problem.Problem})
 }
 func Handler(s *Server) (http.Handler, error) {
+	var pool *pgxpool.Pool
+	if s.Store != nil {
+		pool = s.Store.Pool
+	}
+	auth, err := browserauth.New(s.Config.Auth, pool)
+	if err != nil {
+		return nil, err
+	}
+	s.auth = auth
+
 	spec, err := api.GetSpec()
 	if err != nil {
 		return nil, err
@@ -64,7 +77,7 @@ func Handler(s *Server) (http.Handler, error) {
 		return nil, err
 	}
 	invalid := func(w http.ResponseWriter, r *http.Request, err error) { writeError(w, r, validationProblem(err)) }
-	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{RequestErrorHandlerFunc: invalid, ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) { writeError(w, r, err) }})
+	strict := api.NewStrictHandlerWithOptions(s, []api.StrictMiddlewareFunc{browserRequestMiddleware}, api.StrictHTTPServerOptions{RequestErrorHandlerFunc: invalid, ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) { writeError(w, r, err) }})
 	generated := api.HandlerWithOptions(strict, api.StdHTTPServerOptions{ErrorHandlerFunc: invalid})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -73,6 +86,7 @@ func Handler(s *Server) (http.Handler, error) {
 			_ = json.NewEncoder(w).Encode(spec)
 			return
 		}
+		publicAuth := r.URL.Path == "/api/v1/auth/session" || r.URL.Path == "/auth/login" || r.URL.Path == "/auth/callback" || r.URL.Path == "/auth/logout" || r.URL.Path == "/saml/metadata"
 		bearer := false
 		if headers, present := r.Header["Authorization"]; present {
 			if len(headers) == 1 && strings.HasPrefix(headers[0], "Bearer ") {
@@ -86,12 +100,18 @@ func Handler(s *Server) (http.Handler, error) {
 				writeError(w, r, schedule.Fail(401, "unauthorized", "Valid API credentials are required."))
 				return
 			}
-		} else if s.Config.BrowserAuth != "anonymous" && r.URL.Path != "/api/v1/auth/session" {
-			writeError(w, r, schedule.Fail(401, "unauthorized", "Valid API credentials are required."))
-			return
+		} else if !publicAuth && s.Config.Auth.Mode != "anonymous" {
+			_, err := s.auth.Authenticate(r)
+			if errors.Is(err, browserauth.ErrNoSession) {
+				err = schedule.Fail(401, "unauthorized", "A valid credential is required.")
+			}
+			if err != nil {
+				writeError(w, r, err)
+				return
+			}
 		}
-		if !bearer && r.Method != http.MethodGet && r.Method != http.MethodHead {
-			if len(r.Header.Values("Origin")) != 1 || r.Header.Get("Origin") != s.Config.PublicURL || len(r.Header.Values("X-Orpheus-CSRF")) != 1 || r.Header.Get("X-Orpheus-CSRF") != "1" {
+		if !bearer && r.URL.Path != "/auth/callback" && r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if s.Config.Auth.PublicURL == "" || len(r.Header.Values("Origin")) != 1 || r.Header.Get("Origin") != s.Config.Auth.PublicURL || len(r.Header.Values("X-Orpheus-CSRF")) != 1 || r.Header.Get("X-Orpheus-CSRF") != "1" {
 				writeError(w, r, schedule.Fail(403, "csrf_failed", "Origin and CSRF header are required."))
 				return
 			}

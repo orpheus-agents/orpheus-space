@@ -17,7 +17,7 @@ import (
 )
 
 func TestCLIWithSpaceAPI(t *testing.T) {
-	cfg := config.Config{BrowserAuth: "api_only", PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: maxBody}
+	cfg := config.Config{Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: maxBody}
 	h, err := httpserver.Handler(&httpserver.Server{Config: cfg, Store: &store.Store{Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv}})
 	if err != nil {
 		t.Fatal(err)

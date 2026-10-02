@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/orpheus-agents/orpheus-space/internal/browserauth"
 	"github.com/orpheus-agents/orpheus-space/internal/core"
 	coreapi "github.com/orpheus-agents/orpheus/client"
 
@@ -21,6 +22,7 @@ type CoreReader interface {
 	Run(context.Context, uuid.UUID, uuid.UUID) (coreapi.Run, error)
 }
 type Server struct {
+	auth   *browserauth.Service
 	Core   CoreReader
 	Store  *store.Store
 	Config config.Config
@@ -97,7 +99,7 @@ func (s *Server) DeleteSchedule(ctx context.Context, r api.DeleteScheduleRequest
 	return api.DeleteSchedule204Response{}, nil
 }
 func (s *Server) GetSettings(context.Context, api.GetSettingsRequestObject) (api.GetSettingsResponseObject, error) {
-	return api.GetSettings200JSONResponse{BaseEnvFrom: append([]string{}, s.Config.Execution.Sandbox.EnvFrom...), AllowedEnvFrom: append([]string{}, s.Config.AllowedEnv...), BrowserAuth: api.SettingsBrowserAuth(s.Config.BrowserAuth)}, nil
+	return api.GetSettings200JSONResponse{BaseEnvFrom: append([]string{}, s.Config.Execution.Sandbox.EnvFrom...), AllowedEnvFrom: append([]string{}, s.Config.AllowedEnv...), BrowserAuth: api.SettingsBrowserAuth(s.Config.Auth.Mode)}, nil
 }
 func (s *Server) PreviewSchedule(_ context.Context, r api.PreviewScheduleRequestObject) (api.PreviewScheduleResponseObject, error) {
 	if r.Body == nil {
@@ -117,11 +119,6 @@ func (s *Server) PreviewSchedule(_ context.Context, r api.PreviewScheduleRequest
 		after = next
 	}
 	return api.PreviewSchedule200JSONResponse{Times: times}, nil
-}
-func (s *Server) GetAuthSession(ctx context.Context, _ api.GetAuthSessionRequestObject) (api.GetAuthSessionResponseObject, error) {
-	authenticated, _ := ctx.Value(bearerKey{}).(bool)
-	access := authenticated || s.Config.BrowserAuth == "anonymous"
-	return response[api.GetAuthSession200JSONResponse](map[string]any{"mode": s.Config.BrowserAuth, "authenticated": authenticated, "read_access": access, "write_access": access, "user": nil, "expires_at": nil})
 }
 
 func (s *Server) ListOccurrences(ctx context.Context, r api.ListOccurrencesRequestObject) (api.ListOccurrencesResponseObject, error) {

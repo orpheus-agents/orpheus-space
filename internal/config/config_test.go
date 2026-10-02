@@ -22,7 +22,7 @@ func fixture(t *testing.T) string {
 func TestConfigModesAndEnvironment(t *testing.T) {
 	fixture(t)
 	cfg, err := Load()
-	if err != nil || cfg.BrowserAuth != "api_only" || cfg.Execution.Limits.RunTimeoutSeconds != 3600 {
+	if err != nil || cfg.Auth.Mode != "api_only" || cfg.Execution.Limits.RunTimeoutSeconds != 3600 {
 		t.Fatal(cfg, err)
 	}
 	t.Setenv("PUBLIC_API_KEYS", "[]")
@@ -150,5 +150,25 @@ func TestWorkerPollInterval(t *testing.T) {
 				t.Fatal(cfg.WorkerPoll, err)
 			}
 		})
+	}
+}
+
+func TestWorkerDoesNotLoadSAML(t *testing.T) {
+	fixture(t)
+	t.Setenv("ORPHEUS_BASE_URL", "http://core.test")
+	t.Setenv("ORPHEUS_API_KEY", "core-key")
+	t.Setenv("ORPHEUS_BROWSER_AUTH", "saml")
+	t.Setenv("SAML_SP_KEY_FILE", "/missing/key")
+	t.Setenv("SAML_IDP_METADATA_FILE", "/missing/metadata")
+	t.Setenv("BROWSER_SESSION_TTL_SECONDS", "invalid")
+	if _, err := LoadWorker(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(); err == nil {
+		t.Fatal("serve accepted invalid SAML settings")
+	}
+	t.Setenv("ORPHEUS_BROWSER_AUTH", "invalid")
+	if _, err := LoadWorker(); err == nil {
+		t.Fatal("worker accepted unknown mode")
 	}
 }

@@ -39,8 +39,7 @@ type Config struct {
 	MigrationsDir   string
 	APIAddress      string
 	SystemAddress   string
-	BrowserAuth     string
-	PublicURL       string
+	Auth            BrowserAuth
 	PublicAPIKeys   []string
 	AllowedEnv      []string
 	MaxRequestBytes int64
@@ -57,7 +56,8 @@ func env(key, fallback string) string {
 func Load() (Config, error)       { return load(true) }
 func LoadWorker() (Config, error) { return load(false) }
 func load(browser bool) (Config, error) {
-	c := Config{CoreURL: os.Getenv("ORPHEUS_BASE_URL"), CoreAPIKey: os.Getenv("ORPHEUS_API_KEY"), MigrationsDir: env("ORPHEUS_MIGRATIONS_DIR", "migrations"), DatabaseURL: os.Getenv("DATABASE_URL"), BrowserAuth: env("ORPHEUS_BROWSER_AUTH", "api_only"), PublicURL: os.Getenv("ORPHEUS_PUBLIC_URL"), MaxRequestBytes: 1048576}
+	c := Config{CoreURL: os.Getenv("ORPHEUS_BASE_URL"), CoreAPIKey: os.Getenv("ORPHEUS_API_KEY"), MigrationsDir: env("ORPHEUS_MIGRATIONS_DIR", "migrations"), DatabaseURL: os.Getenv("DATABASE_URL"), MaxRequestBytes: 1048576}
+	c.Auth = BrowserAuth{Mode: env("ORPHEUS_BROWSER_AUTH", "api_only"), PublicURL: os.Getenv("ORPHEUS_PUBLIC_URL")}
 	poll, err := time.ParseDuration(env("WORKER_POLL_SECONDS", "1") + "s")
 	if err != nil || poll <= 0 {
 		return c, errors.New("invalid WORKER_POLL_SECONDS")
@@ -103,16 +103,22 @@ func load(browser bool) (Config, error) {
 			return c, errors.New("PUBLIC_API_KEYS contains an empty key")
 		}
 	}
-	if c.BrowserAuth != "api_only" && c.BrowserAuth != "anonymous" {
-		return c, errors.New("ORPHEUS_BROWSER_AUTH must be api_only or anonymous; SAML is not available in this release")
+	if err := c.Auth.validMode(); err != nil {
+		return c, err
 	}
-	if browser && c.BrowserAuth == "api_only" && len(c.PublicAPIKeys) == 0 {
-		return c, errors.New("PUBLIC_API_KEYS is required in api_only mode")
-	}
-	if c.PublicURL != "" || c.BrowserAuth == "anonymous" {
-		u, err := url.Parse(c.PublicURL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Path != "" {
-			return c, errors.New("ORPHEUS_PUBLIC_URL must be an HTTP(S) origin without a path")
+	// Only serve reads SAML files and session settings; the worker needs the mode alone.
+	if browser {
+		c.Auth.EntityID, c.Auth.MetadataFile, c.Auth.CertFile, c.Auth.KeyFile = os.Getenv("SAML_SP_ENTITY_ID"), os.Getenv("SAML_IDP_METADATA_FILE"), os.Getenv("SAML_SP_CERT_FILE"), os.Getenv("SAML_SP_KEY_FILE")
+		c.Auth.ttlSeconds = os.Getenv("BROWSER_SESSION_TTL_SECONDS")
+		c.Auth, err = c.Auth.Validated()
+		if err != nil {
+			return c, err
+		}
+		if c.Auth.Mode == "api_only" && len(c.PublicAPIKeys) == 0 {
+			return c, errors.New("PUBLIC_API_KEYS is required in api_only mode")
+		}
+		if c.Auth.Mode == "anonymous" && c.Auth.PublicURL == "" {
+			return c, errors.New("ORPHEUS_PUBLIC_URL is required in anonymous mode")
 		}
 	}
 	n, err := strconv.ParseInt(env("MAX_REQUEST_BYTES", "1048576"), 10, 64)

@@ -33,7 +33,7 @@ const createBody = `{"name":"Report","prompt":"Summarize incidents","cron":"0 10
 
 func fixture(t *testing.T, mode string) http.Handler {
 	t.Helper()
-	cfg := config.Config{BrowserAuth: mode, PublicURL: "http://space.test", PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A", "B"}, MaxRequestBytes: 4096}
+	cfg := config.Config{Auth: config.BrowserAuth{Mode: mode, PublicURL: "http://space.test"}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A", "B"}, MaxRequestBytes: 4096}
 	cfg.Execution.Sandbox.EnvFrom = []string{"A"}
 	s := &store.Store{Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv}
 	h, err := Handler(&Server{Store: s, Config: cfg, Now: func() time.Time { return time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) }})
@@ -156,7 +156,7 @@ func TestAuthorizationAndCSRF(t *testing.T) {
 	}
 }
 func TestInvalidInputsDoNotReachStorage(t *testing.T) {
-	h, err := Handler(&Server{Config: config.Config{BrowserAuth: "api_only", PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}})
+	h, err := Handler(&Server{Config: config.Config{Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestInvalidInputsDoNotReachStorage(t *testing.T) {
 func TestUnavailableDatabaseDoesNotAffectPreview(t *testing.T) {
 	pool := testutil.Database(t)
 	pool.Close()
-	cfg := config.Config{BrowserAuth: "api_only", PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
+	cfg := config.Config{Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
 	h, err := Handler(&Server{Store: &store.Store{Pool: pool}, Config: cfg})
 	if err != nil {
 		t.Fatal(err)
@@ -274,7 +274,7 @@ func TestHistoryAndExplicitResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	occ := history.Items[0]
-	cfg := config.Config{BrowserAuth: "api_only", PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
+	cfg := config.Config{Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
 	c := &resultCore{run: coreapi.Run{ID: uuid.New(), SessionID: uuid.New(), Status: coreapi.RunStatusCompleted, FinalMessage: &coreapi.Message{ID: uuid.New(), Text: "sensitive result", CreatedAt: now}}}
 	handler, err := Handler(&Server{Store: storage, Config: cfg, Core: c})
 	if err != nil {
