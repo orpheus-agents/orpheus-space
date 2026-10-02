@@ -8,6 +8,8 @@ only the endpoint. `--help` and `--version` work without API access.
 orpheus-space schedule list --owner-email alice@example.com --limit 50 --json
 orpheus-space schedule list --owner-email alice@example.com --cursor '<next_cursor>' --json
 orpheus-space schedule get '<id>' --json
+orpheus-space schedule profiles --json
+orpheus-space schedule templates --json
 orpheus-space schedule settings --json
 orpheus-space schedule preview --cron '0 10 * * 1-5' --timezone Europe/Moscow --json
 orpheus-space schedule create --file schedule.json --json
@@ -35,6 +37,12 @@ Create input (`schedule.json`):
 }
 ```
 
+Creation accepts optional `profile` and `template` names from the catalogs;
+omitted fields save the installation's defaults. A patch such as
+`{"profile":"<catalog-name>","template":"<catalog-name>"}` changes the selection.
+Neither field accepts null or an empty string. Read the saved names in the returned
+schedule. Selection changes start a new reusable session at the next unprepared run.
+
 A patch contains only fields to change. `{"model":null,"env_from":[]}` removes
 the model override and additional ENV names. `--file -` reads JSON from stdin.
 Use a JSON serializer for multiline prompts; do not construct shell commands
@@ -45,8 +53,8 @@ beforehand. After a request error, the CLI reports the key to reuse: retry
 **the same JSON with the same key**. Do not generate a new key after a network
 failure. The CLI does not retry automatically.
 
-list/get/history/occurrence read stored Space data. `result` explicitly queries
-core and may fail when core is unavailable. List/history return one page and
+list/get/history/occurrence read stored Space data. `profiles`, `templates` and
+`result` explicitly query Orpheus and may fail when it is unavailable. List/history return one page and
 next_cursor; they do not fetch all pages automatically. Repeated `--owner-email`
 filters use OR semantics; when acting for a user, select only the request author.
 `--unowned` is available for administrative use and is outside this skill's

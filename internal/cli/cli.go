@@ -103,17 +103,20 @@ func command(input io.Reader, output io.Writer, getenv func(string) string, vers
 		}
 		group.AddCommand(cmd)
 	}
-	for _, name := range []string{"get", "delete", "pause", "resume", "reset-session", "occurrence", "result", "settings"} {
+	for _, name := range []string{"get", "delete", "pause", "resume", "reset-session", "occurrence", "result", "settings", "profiles", "templates"} {
 		nargs := 1
 		short := "Read or change a schedule in Space's database"
 		use := name + " <id>"
-		if name == "settings" {
+		if name == "settings" || name == "profiles" || name == "templates" {
 			nargs = 0
 			use = name
 		}
 		if name == "occurrence" || name == "result" {
 			nargs = 2
 			use += " <occurrence-id>"
+		}
+		if name == "profiles" || name == "templates" {
+			short = "Read available choices and creation defaults from Orpheus through Space"
 		}
 		if name == "result" {
 			short = "Explicitly read the run result from Orpheus core through Space; requires core availability"
@@ -131,6 +134,10 @@ func command(input io.Reader, output io.Writer, getenv func(string) string, vers
 			return o.call(func(c *api.Client) (*http.Response, error) {
 				ctx := cmd.Context()
 				switch name {
+				case "profiles":
+					return c.GetProfiles(ctx)
+				case "templates":
+					return c.GetTemplates(ctx)
 				case "settings":
 					return c.GetSettings(ctx)
 				case "get":

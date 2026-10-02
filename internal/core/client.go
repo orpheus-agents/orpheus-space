@@ -54,7 +54,7 @@ func decode(res *http.Response, err error, out any) error {
 	var envelope coreapi.ErrorResponse
 	if json.Unmarshal(raw, &envelope) == nil {
 		switch envelope.Error.Code {
-		case "capacity_exhausted", "session_busy", "idempotency_conflict", "validation_error", "unauthorized", "session_not_found", "run_not_found", "multiple_runs_not_allowed", "token_limit_exceeded", "session_unavailable", "storage_unavailable", "request_too_large", "unsupported_media_type", "invalid_json", "idempotency_key_required":
+		case "unknown_profile", "unknown_template", "capacity_exhausted", "session_busy", "idempotency_conflict", "validation_error", "unauthorized", "session_not_found", "run_not_found", "multiple_runs_not_allowed", "token_limit_exceeded", "session_unavailable", "storage_unavailable", "request_too_large", "unsupported_media_type", "invalid_json", "idempotency_key_required":
 			code = envelope.Error.Code
 		}
 	}
@@ -120,4 +120,29 @@ func ErrorCode(err error) string {
 }
 func Terminal(status coreapi.RunStatus) bool {
 	return status == coreapi.RunStatusCompleted || status == coreapi.RunStatusFailed || status == coreapi.RunStatusCancelled
+}
+
+func (c *Client) Profiles(ctx context.Context) (coreapi.Profiles, error) {
+	var out coreapi.Profiles
+	res, err := c.api.GetProfiles(ctx)
+	if res != nil {
+		defer func() { _ = res.Body.Close() }()
+	}
+	err = decode(res, err, &out)
+	if err == nil && out.Items == nil {
+		err = &Failure{Code: "core_invalid_response"}
+	}
+	return out, err
+}
+func (c *Client) Templates(ctx context.Context) (coreapi.Templates, error) {
+	var out coreapi.Templates
+	res, err := c.api.GetTemplates(ctx)
+	if res != nil {
+		defer func() { _ = res.Body.Close() }()
+	}
+	err = decode(res, err, &out)
+	if err == nil && out.Items == nil {
+		err = &Failure{Code: "core_invalid_response"}
+	}
+	return out, err
 }

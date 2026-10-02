@@ -18,7 +18,7 @@ import (
 
 func fixture(t *testing.T) (*Store, schedule.Input) {
 	t.Helper()
-	s := &Store{Pool: testutil.Database(t), AllowedEnv: []string{"A", "B"}, Now: func() time.Time { return time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) }}
+	s := &Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t), AllowedEnv: []string{"A", "B"}, Now: func() time.Time { return time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) }}
 	in := schedule.Defaults()
 	in.Name = "Report"
 	in.Prompt = "Summarize incidents"

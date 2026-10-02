@@ -13,6 +13,16 @@ sending results to a messenger or another application requires the corresponding
 tools and credentials in the task's environment. Space stores status and the run
 reference; `result` retrieves the outcome from core without publishing it elsewhere.
 
+Before creating a task or changing its profile/template, read
+`orpheus-space schedule profiles --json` and `schedule templates --json`.
+Each response has `items` with exact names, descriptions and `is_default`.
+Honor the user's explicit choice. Otherwise use the marked defaults; omitting
+these fields on creation asks the server to save its configured defaults.
+If a default is missing or a choice is unclear, ask the user to choose from the
+catalog. Never invent a name or silently replace a removed choice. Do not change
+existing tasks' selections unless requested. Catalog failures do not prevent
+pausing a task or editing its other fields.
+
 Run `orpheus-space schedule settings --json` before adding ENV references.
 Its JSON response contains `allowed_env_from`, an array of ENV names permitted
 by this Space installation, and `base_env_from`, the names already included in
@@ -33,8 +43,8 @@ values at execution time; never request secret values or put them in JSON or
 prompts.
 
 - `session_mode=new` starts each run in a new session; this is the default.
-- `session_mode=reuse` preserves conversation history. Changes to model, env_from,
-  session mode, or base configuration start a new session after the previous run ends.
+- `session_mode=reuse` preserves conversation history. Changes to profile, template, model,
+  env_from, session mode, or effective base configuration start a new session after the previous run ends.
 - `model` is optional; null leaves the choice to the core profile.
 - `status=active` / `paused` means running / paused. Pausing does not cancel a run
   already accepted by core.

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,9 +20,12 @@ import (
 )
 
 type Store struct {
-	Pool       *pgxpool.Pool
-	AllowedEnv []string
-	Now        func() time.Time
+	Pool            *pgxpool.Pool
+	AllowedEnv      []string
+	Now             func() time.Time
+	DefaultProfile  string
+	DefaultTemplate string
+	Catalog         Catalog
 }
 
 func (s *Store) now() time.Time {
@@ -31,7 +35,7 @@ func (s *Store) now() time.Time {
 	return time.Now().UTC().Truncate(time.Microsecond)
 }
 func record(row db.Schedule) schedule.Schedule {
-	return schedule.Schedule{Name: row.Name, Prompt: row.Prompt, Cron: row.Cron, Timezone: row.Timezone, Status: row.Status, Model: row.Model, SessionMode: row.SessionMode, OwnerEmail: row.OwnerEmail, EnvFrom: row.EnvFrom, ID: row.ID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, NextRunAt: row.NextRunAt, DeletedAt: row.DeletedAt}
+	return schedule.Schedule{Profile: row.Profile, Template: row.Template, Name: row.Name, Prompt: row.Prompt, Cron: row.Cron, Timezone: row.Timezone, Status: row.Status, Model: row.Model, SessionMode: row.SessionMode, OwnerEmail: row.OwnerEmail, EnvFrom: row.EnvFrom, ID: row.ID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, NextRunAt: row.NextRunAt, DeletedAt: row.DeletedAt}
 }
 func missing(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -54,6 +58,33 @@ func (s *Store) Create(ctx context.Context, in schedule.Input, key *uuid.UUID) (
 	if err != nil {
 		return schedule.Schedule{}, err
 	}
+	normalized, _ := json.Marshal(in)
+	hash := sha256.Sum256(normalized)
+	fingerprint := hex.EncodeToString(hash[:])
+	if key != nil {
+		previous, err := db.New(s.Pool).GetCreateKey(ctx, *key)
+		if err == nil {
+			return replay(previous, fingerprint)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return schedule.Schedule{}, err
+		}
+	}
+	if in.Profile == "" {
+		in.Profile = s.DefaultProfile
+	}
+	if in.Template == "" {
+		in.Template = s.DefaultTemplate
+	}
+	if strings.TrimSpace(in.Profile) == "" {
+		return schedule.Schedule{}, schedule.Invalid("profile")
+	}
+	if strings.TrimSpace(in.Template) == "" {
+		return schedule.Schedule{}, schedule.Invalid("template")
+	}
+	if err := s.validateSelection(ctx, in.Profile, in.Template); err != nil {
+		return schedule.Schedule{}, err
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return schedule.Schedule{}, err
@@ -61,21 +92,13 @@ func (s *Store) Create(ctx context.Context, in schedule.Input, key *uuid.UUID) (
 	defer func() { _ = tx.Rollback(context.Background()) }()
 	q := db.New(tx)
 	if key != nil {
-		normalized, _ := json.Marshal(in)
-		hash := sha256.Sum256(normalized)
-		fingerprint := hex.EncodeToString(hash[:])
 		_, err = q.ReserveCreateKey(ctx, db.ReserveCreateKeyParams{Key: *key, Fingerprint: fingerprint})
 		if errors.Is(err, pgx.ErrNoRows) {
 			previous, err := q.GetCreateKey(ctx, *key)
 			if err != nil {
 				return schedule.Schedule{}, err
 			}
-			if previous.Fingerprint != fingerprint {
-				return schedule.Schedule{}, schedule.Fail(409, "idempotency_conflict", "Key was used with a different request.")
-			}
-			var result schedule.Schedule
-			err = json.Unmarshal(previous.Response, &result)
-			return result, err
+			return replay(previous, fingerprint)
 		}
 		if err != nil {
 			return schedule.Schedule{}, err
@@ -89,7 +112,7 @@ func (s *Store) Create(ctx context.Context, in schedule.Input, key *uuid.UUID) (
 		}
 		next = &value
 	}
-	row, err := q.CreateSchedule(ctx, db.CreateScheduleParams{ID: uuid.New(), Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, Timezone: in.Timezone, Status: in.Status, Model: in.Model, SessionMode: in.SessionMode, OwnerEmail: in.OwnerEmail, EnvFrom: in.EnvFrom, CreatedAt: now, NextRunAt: next})
+	row, err := q.CreateSchedule(ctx, db.CreateScheduleParams{ID: uuid.New(), Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, Timezone: in.Timezone, Status: in.Status, Model: in.Model, SessionMode: in.SessionMode, OwnerEmail: in.OwnerEmail, EnvFrom: in.EnvFrom, CreatedAt: now, NextRunAt: next, Profile: in.Profile, Template: in.Template})
 	if err != nil {
 		return schedule.Schedule{}, err
 	}
@@ -109,6 +132,45 @@ func (s *Store) Create(ctx context.Context, in schedule.Input, key *uuid.UUID) (
 	return result, nil
 }
 func (s *Store) Update(ctx context.Context, id uuid.UUID, patch []byte) (schedule.Schedule, error) {
+	for {
+		row, err := db.New(s.Pool).GetSchedule(ctx, id)
+		if err != nil {
+			return schedule.Schedule{}, missing(err)
+		}
+		if row.DeletedAt != nil {
+			return schedule.Schedule{}, schedule.Fail(409, "schedule_deleted", "Deleted schedules cannot be edited.")
+		}
+		in, err := schedule.Patch(record(row).Input, patch)
+		if err != nil {
+			return schedule.Schedule{}, err
+		}
+		profile, template := "", ""
+		if in.Profile != row.Profile {
+			profile = in.Profile
+			if strings.TrimSpace(profile) == "" {
+				return schedule.Schedule{}, schedule.Invalid("profile")
+			}
+		}
+		if in.Template != row.Template {
+			template = in.Template
+			if strings.TrimSpace(template) == "" {
+				return schedule.Schedule{}, schedule.Invalid("template")
+			}
+		}
+		if err = s.validateSelection(ctx, profile, template); err != nil {
+			return schedule.Schedule{}, err
+		}
+		out, err := s.update(ctx, id, patch, row)
+		if errors.Is(err, errSelectionChanged) {
+			continue
+		}
+		return out, err
+	}
+}
+
+var errSelectionChanged = errors.New("schedule selection changed during validation")
+
+func (s *Store) update(ctx context.Context, id uuid.UUID, patch []byte, checked db.Schedule) (schedule.Schedule, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return schedule.Schedule{}, err
@@ -121,6 +183,9 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, patch []byte) (schedul
 	}
 	if row.DeletedAt != nil {
 		return schedule.Schedule{}, schedule.Fail(409, "schedule_deleted", "Deleted schedules cannot be edited.")
+	}
+	if row.Profile != checked.Profile || row.Template != checked.Template {
+		return schedule.Schedule{}, errSelectionChanged
 	}
 	current := record(row)
 	in, err := schedule.Patch(current.Input, patch)
@@ -144,7 +209,7 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, patch []byte) (schedul
 	if in.Status == "paused" {
 		next = nil
 	}
-	if in.SessionMode != current.SessionMode || !slices.Equal(in.EnvFrom, current.EnvFrom) || !equalString(in.Model, current.Model) {
+	if in.Profile != current.Profile || in.Template != current.Template || in.SessionMode != current.SessionMode || !slices.Equal(in.EnvFrom, current.EnvFrom) || !equalString(in.Model, current.Model) {
 		if err = q.ClearReusableSession(ctx, id); err != nil {
 			return schedule.Schedule{}, err
 		}
@@ -154,7 +219,7 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, patch []byte) (schedul
 			return schedule.Schedule{}, err
 		}
 	}
-	row, err = q.UpdateSchedule(ctx, db.UpdateScheduleParams{ID: id, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, Timezone: in.Timezone, Status: in.Status, Model: in.Model, SessionMode: in.SessionMode, OwnerEmail: in.OwnerEmail, EnvFrom: in.EnvFrom, UpdatedAt: now, NextRunAt: next, CronStartedAt: start})
+	row, err = q.UpdateSchedule(ctx, db.UpdateScheduleParams{ID: id, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, Timezone: in.Timezone, Status: in.Status, Model: in.Model, SessionMode: in.SessionMode, OwnerEmail: in.OwnerEmail, EnvFrom: in.EnvFrom, UpdatedAt: now, NextRunAt: next, CronStartedAt: start, Profile: in.Profile, Template: in.Template})
 	if err != nil {
 		return schedule.Schedule{}, err
 	}
@@ -295,3 +360,12 @@ func (s *Store) List(ctx context.Context, filter Filter, limit int, token string
 }
 
 func equalString(a, b *string) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
+
+func replay(previous db.GetCreateKeyRow, fingerprint string) (schedule.Schedule, error) {
+	if previous.Fingerprint != fingerprint {
+		return schedule.Schedule{}, schedule.Fail(409, "idempotency_conflict", "Key was used with a different request.")
+	}
+	var result schedule.Schedule
+	err := json.Unmarshal(previous.Response, &result)
+	return result, err
+}

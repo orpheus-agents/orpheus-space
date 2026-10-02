@@ -33,10 +33,14 @@ system probes on 9110; container defaults match core (8000/9100). Compose suppli
 Set `ORPHEUS_BASE_URL` and `ORPHEUS_API_KEY` in `.env` to connect a core instance
 reachable from Docker. `make start-worker` starts the planner separately;
 `make start` runs only the API/database. The worker requires core credentials;
-the API can run without them, returning 503 from the explicit result endpoint.
-Generated core client version: v0.4.0. No AgentBox credentials are needed here.
+the API can run without them, but catalog reads, result reads, creation and
+selection changes return 503. Local reads and other edits remain available.
+Generated core client version: v0.5.0. No AgentBox credentials are needed here.
 
 ## API
+
+See [profile and template selection](docs/profile-and-template-selection.md) for
+defaults, validation and the migration of existing schedules.
 
 The contract lives in [api/openapi.yaml](api/openapi.yaml), served as
 `GET /openapi.json`. Generated Go server types and the public [Go client](client/README.md)
@@ -47,6 +51,8 @@ and pin a release tag of the root module.
 | --- | --- |
 | `GET/POST /api/v1/schedules` | List/create schedules |
 | `GET/PATCH/DELETE /api/v1/schedules/{id}` | Read/edit/soft delete |
+| `GET /api/v1/schedules/profiles` | Public Orpheus profiles with descriptions and `is_default` |
+| `GET /api/v1/schedules/templates` | Orpheus templates with descriptions and `is_default` |
 | `GET /api/v1/schedules/settings` | Base and allowed ENV names, auth mode |
 | `POST /api/v1/schedules/preview` | Five future UTC times for cron/timezone |
 | `GET /api/v1/schedules/{id}/occurrences` | Stored history, cursor pagination |
@@ -70,7 +76,8 @@ time, including idempotent replays; changing the public origin updates links
 without changing stored schedules.
 
 Create requires name, prompt, five-field cron and IANA timezone. Defaults are
-`status=active`, `session_mode=new`, `model=null`, `owner_email=null`, `env_from=[]`.
+`profile` and `template` from execution settings, `status=active`,
+`session_mode=new`, `model=null`, `owner_email=null`, `env_from=[]`.
 Macros, seconds, years and inline TZ are rejected. `Local` is not a timezone input.
 DST follows cron wall-clock semantics: missing times are skipped, repeated times
 occur twice. Preview uses the same parser as persistence.
@@ -135,14 +142,15 @@ work is reconciled even after pause/delete, without cancelling an accepted run.
 An uncertain outcome stays unresolved on later auth/replay errors. Agent failures
 are not retried automatically. None of the snapshots contain secret ENV values.
 
-`new` creates single-run sessions. `reuse` continues the same session until model,
-ENV names, session mode or effective base configuration changes, or an explicit
-reset. Prompt/name/owner/cron edits preserve session history. Old sessions are not
+`new` creates single-run sessions. `reuse` continues the same session until profile,
+template, model, ENV names, session mode or effective base configuration changes,
+or an explicit reset. Prompt/name/owner/cron edits preserve session history. Old sessions are not
 deleted by Space. Capacity and session-busy errors retry the same request;
 idempotency conflicts block that occurrence for operator investigation.
 
-Lists, cards, history, settings and reset use only Space's database. Only `result`
-reads the core, never writing the returned text/status back to the local history.
+Lists, cards, history, settings and reset use only Space's database. Catalog
+endpoints and `result` explicitly read Orpheus. Result reads never write returned
+text/status back to local history.
 Missing runs return 404, not-started occurrences 409, and core auth/network failures
 503. The core remains the only archive of messages and full results.
 
@@ -257,6 +265,8 @@ release, verify them against `checksums.txt`, and put the binary on PATH. Unpack
 export ORPHEUS_SPACE_HOST=http://localhost:8010
 export ORPHEUS_SPACE_API_KEY=local-space-key
 orpheus-space schedule list --owner-email alice@example.com --json
+orpheus-space schedule profiles --json
+orpheus-space schedule templates --json
 orpheus-space schedule create --file schedule.json --json
 orpheus-space schedule history <id> --json
 orpheus-space schedule result <id> <occurrence-id> --json
@@ -266,7 +276,8 @@ orpheus-space schedule result <id> <occurrence-id> --json
 ENV. Redirects are never followed. Output is JSON, indented by default or compact
 with `--json`; errors are JSON on stderr. Exit codes: 0 success, 1 error.
 Each list/history call reads one page. Reuse `next_cursor` with the same filters.
-`result` explicitly accesses core; other reads use Space's stored data.
+`profiles`, `templates` and `result` explicitly access Orpheus; other reads use
+Space's stored data.
 
 Create generates an idempotency UUID or accepts `--idempotency-key`. After an error,
 the diagnostic includes that key: retry the same input with the same key. The CLI

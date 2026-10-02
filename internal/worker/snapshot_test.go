@@ -9,6 +9,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/google/uuid"
 	"github.com/orpheus-agents/orpheus-space/internal/config"
 	"github.com/orpheus-agents/orpheus-space/internal/store/db"
 	coreapi "github.com/orpheus-agents/orpheus/client"
@@ -128,4 +129,52 @@ func readFrontMatter(t *testing.T, text string) struct {
 		t.Fatal(err)
 	}
 	return result
+}
+
+func TestStoredSelectionAndInstructionOverrides(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Execution.Agent.Profile = "creation-default"
+	cfg.Execution.Sandbox.Template = "creation-template"
+	row := db.Schedule{ID: uuid.New(), Timezone: "UTC", Profile: "selected", Template: "selected:v1", SessionMode: "reuse"}
+	occ := db.ScheduleOccurrence{ID: uuid.New(), ScheduledAt: time.Now()}
+	first, err := Builder(cfg)(row, occ, nil, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request coreapi.CreateSession
+	if err = json.Unmarshal(first.Body, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Configuration.Agent.Profile != row.Profile || request.Configuration.Sandbox.Template != row.Template || request.Configuration.Agent.Instructions != nil {
+		t.Fatal(request.Configuration)
+	}
+	cfg.Execution.Agent.Profile, cfg.Execution.Sandbox.Template = "new-default", "new-template"
+	row.ReusableSessionID, row.ReusableFingerprint = new(uuid.New()), &first.Fingerprint
+	reuse, err := Builder(cfg)(row, occ, nil, time.Now())
+	if err != nil || reuse.Fingerprint != first.Fingerprint || reuse.Path == "/api/v1/sessions" {
+		t.Fatal(reuse, err)
+	}
+	for _, selection := range []string{"profile", "template"} {
+		changed := row
+		if selection == "profile" {
+			changed.Profile = "other"
+		} else {
+			changed.Template = "other"
+		}
+		fresh, err := Builder(cfg)(changed, occ, nil, time.Now())
+		if err != nil || fresh.Fingerprint == first.Fingerprint || fresh.Path != "/api/v1/sessions" {
+			t.Fatal(fresh, err)
+		}
+	}
+	row.ReusableSessionID = nil
+	for _, text := range []string{"", "override"} {
+		cfg.Execution.Agent.Instructions = &text
+		fresh, err := Builder(cfg)(row, occ, nil, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = json.Unmarshal(fresh.Body, &request); err != nil || request.Configuration.Agent.Instructions == nil || *request.Configuration.Agent.Instructions != text {
+			t.Fatal(request, err)
+		}
+	}
 }

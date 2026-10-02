@@ -13,6 +13,7 @@ import (
 )
 
 func Provider(db *sql.DB, directory string, options ...goose.ProviderOption) (*goose.Provider, error) {
+	options = append(options, goose.WithGoMigrations(selectionMigration()))
 	return goose.NewProvider(goose.DialectPostgres, db, os.DirFS(directory), options...)
 }
 func Run(ctx context.Context, dsn, command, directory string) error {

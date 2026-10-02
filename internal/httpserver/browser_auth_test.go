@@ -24,8 +24,8 @@ import (
 func TestSAMLBrowserCRUDAndIsolation(t *testing.T) {
 	pool := testutil.Database(t)
 	f := testutil.NewSAML(t, "https://space.test")
-	cfg := config.Config{Auth: f.Config, PublicAPIKeys: []string{"key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: 4096}
-	h, err := Handler(&Server{Config: cfg, Store: &store.Store{Pool: pool, AllowedEnv: cfg.AllowedEnv}})
+	cfg := config.Config{Execution: testutil.Execution(), Auth: f.Config, PublicAPIKeys: []string{"key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: 4096}
+	h, err := Handler(&Server{Core: testutil.Catalog{}, Config: cfg, Store: &store.Store{Pool: pool, AllowedEnv: cfg.AllowedEnv, DefaultProfile: cfg.Execution.Agent.Profile, DefaultTemplate: cfg.Execution.Sandbox.Template, Catalog: testutil.Catalog{}}})
 	if err != nil {
 		t.Fatal(err)
 	}

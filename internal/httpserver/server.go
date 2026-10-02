@@ -19,6 +19,7 @@ import (
 )
 
 type CoreReader interface {
+	store.Catalog
 	Run(context.Context, uuid.UUID, uuid.UUID) (coreapi.Run, error)
 }
 type Server struct {
@@ -191,4 +192,45 @@ func (s *Server) GetOccurrenceResult(ctx context.Context, r api.GetOccurrenceRes
 		problem = map[string]any{"code": run.Error.Code, "message": run.Error.Message, "phase": run.Error.Phase}
 	}
 	return response[api.GetOccurrenceResult200JSONResponse](map[string]any{"run_status": run.Status, "fetched_at": time.Now().UTC(), "final_message": message, "error": problem})
+}
+
+func (s *Server) GetProfiles(ctx context.Context, _ api.GetProfilesRequestObject) (api.GetProfilesResponseObject, error) {
+	if s.Core == nil {
+		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
+	}
+	profiles, err := s.Core.Profiles(ctx)
+	if err != nil {
+		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
+	}
+	type item struct {
+		coreapi.Profile
+		IsDefault bool `json:"is_default"`
+	}
+	items := make([]item, 0, len(profiles.Items))
+	for _, p := range profiles.Items {
+		items = append(items, item{p, p.Name == s.Store.DefaultProfile})
+	}
+	return response[api.GetProfiles200JSONResponse](struct {
+		Items []item `json:"items"`
+	}{items})
+}
+func (s *Server) GetTemplates(ctx context.Context, _ api.GetTemplatesRequestObject) (api.GetTemplatesResponseObject, error) {
+	if s.Core == nil {
+		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
+	}
+	templates, err := s.Core.Templates(ctx)
+	if err != nil {
+		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
+	}
+	type item struct {
+		coreapi.Template
+		IsDefault bool `json:"is_default"`
+	}
+	items := make([]item, 0, len(templates.Items))
+	for _, t := range templates.Items {
+		items = append(items, item{t, t.Name == s.Store.DefaultTemplate})
+	}
+	return response[api.GetTemplates200JSONResponse](struct {
+		Items []item `json:"items"`
+	}{items})
 }

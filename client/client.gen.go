@@ -40,6 +40,87 @@ func (e AuthSessionMode) Valid() bool {
 	}
 }
 
+// Defines values for CodexProfileEffort.
+const (
+	CodexProfileEffortHigh    CodexProfileEffort = "high"
+	CodexProfileEffortLow     CodexProfileEffort = "low"
+	CodexProfileEffortMax     CodexProfileEffort = "max"
+	CodexProfileEffortMedium  CodexProfileEffort = "medium"
+	CodexProfileEffortMinimal CodexProfileEffort = "minimal"
+	CodexProfileEffortNone    CodexProfileEffort = "none"
+	CodexProfileEffortUltra   CodexProfileEffort = "ultra"
+	CodexProfileEffortXhigh   CodexProfileEffort = "xhigh"
+)
+
+// Valid indicates whether the value is a known member of the CodexProfileEffort enum.
+func (e CodexProfileEffort) Valid() bool {
+	switch e {
+	case CodexProfileEffortHigh:
+		return true
+	case CodexProfileEffortLow:
+		return true
+	case CodexProfileEffortMax:
+		return true
+	case CodexProfileEffortMedium:
+		return true
+	case CodexProfileEffortMinimal:
+		return true
+	case CodexProfileEffortNone:
+		return true
+	case CodexProfileEffortUltra:
+		return true
+	case CodexProfileEffortXhigh:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CodexProfilePersonality.
+const (
+	CodexProfilePersonalityFriendly  CodexProfilePersonality = "friendly"
+	CodexProfilePersonalityNone      CodexProfilePersonality = "none"
+	CodexProfilePersonalityPragmatic CodexProfilePersonality = "pragmatic"
+)
+
+// Valid indicates whether the value is a known member of the CodexProfilePersonality enum.
+func (e CodexProfilePersonality) Valid() bool {
+	switch e {
+	case CodexProfilePersonalityFriendly:
+		return true
+	case CodexProfilePersonalityNone:
+		return true
+	case CodexProfilePersonalityPragmatic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CodexProfileSummary.
+const (
+	CodexProfileSummaryAuto     CodexProfileSummary = "auto"
+	CodexProfileSummaryConcise  CodexProfileSummary = "concise"
+	CodexProfileSummaryDetailed CodexProfileSummary = "detailed"
+	CodexProfileSummaryNone     CodexProfileSummary = "none"
+)
+
+// Valid indicates whether the value is a known member of the CodexProfileSummary enum.
+func (e CodexProfileSummary) Valid() bool {
+	switch e {
+	case CodexProfileSummaryAuto:
+		return true
+	case CodexProfileSummaryConcise:
+		return true
+	case CodexProfileSummaryDetailed:
+		return true
+	case CodexProfileSummaryNone:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OccurrenceState.
 const (
 	Accepted    OccurrenceState = "accepted"
@@ -64,6 +145,21 @@ func (e OccurrenceState) Valid() bool {
 	case Pending:
 		return true
 	case Skipped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileHarness.
+const (
+	Codex ProfileHarness = "codex"
+)
+
+// Valid indicates whether the value is a known member of the ProfileHarness enum.
+func (e ProfileHarness) Valid() bool {
+	switch e {
+	case Codex:
 		return true
 	default:
 		return false
@@ -146,17 +242,40 @@ type AuthSession struct {
 // AuthSessionMode defines model for AuthSession.Mode.
 type AuthSessionMode string
 
+// CodexProfile defines model for CodexProfile.
+type CodexProfile struct {
+	Effort      *CodexProfileEffort      `json:"effort,omitempty"`
+	Personality *CodexProfilePersonality `json:"personality,omitempty"`
+	ServiceTier *string                  `json:"service_tier,omitempty"`
+	Summary     *CodexProfileSummary     `json:"summary,omitempty"`
+}
+
+// CodexProfileEffort defines model for CodexProfile.Effort.
+type CodexProfileEffort string
+
+// CodexProfilePersonality defines model for CodexProfile.Personality.
+type CodexProfilePersonality string
+
+// CodexProfileSummary defines model for CodexProfile.Summary.
+type CodexProfileSummary string
+
 // CreateSchedule defines model for CreateSchedule.
 type CreateSchedule struct {
-	Cron        string                    `json:"cron"`
-	EnvFrom     *EnvFrom                  `json:"env_from,omitempty"`
-	Model       nullable.Nullable[string] `json:"model,omitempty"`
-	Name        string                    `json:"name"`
-	OwnerEmail  nullable.Nullable[string] `json:"owner_email,omitempty"`
-	Prompt      string                    `json:"prompt"`
-	SessionMode *SessionMode              `json:"session_mode,omitempty"`
-	Status      *Status                   `json:"status,omitempty"`
-	Timezone    string                    `json:"timezone"`
+	Cron       string                    `json:"cron"`
+	EnvFrom    *EnvFrom                  `json:"env_from,omitempty"`
+	Model      nullable.Nullable[string] `json:"model,omitempty"`
+	Name       string                    `json:"name"`
+	OwnerEmail nullable.Nullable[string] `json:"owner_email,omitempty"`
+
+	// Profile Exact Orpheus profile name; creation uses the configured default when omitted.
+	Profile     *string      `json:"profile,omitempty"`
+	Prompt      string       `json:"prompt"`
+	SessionMode *SessionMode `json:"session_mode,omitempty"`
+	Status      *Status      `json:"status,omitempty"`
+
+	// Template Exact Orpheus template name; creation uses the configured default when omitted.
+	Template *string `json:"template,omitempty"`
+	Timezone string  `json:"timezone"`
 }
 
 // EnvFrom defines model for EnvFrom.
@@ -253,6 +372,25 @@ type Problem struct {
 	} `json:"error"`
 }
 
+// Profile defines model for Profile.
+type Profile struct {
+	Codex        CodexProfile              `json:"codex"`
+	Description  nullable.Nullable[string] `json:"description"`
+	Harness      ProfileHarness            `json:"harness"`
+	Instructions string                    `json:"instructions"`
+	IsDefault    bool                      `json:"is_default"`
+	Model        nullable.Nullable[string] `json:"model"`
+	Name         string                    `json:"name"`
+}
+
+// ProfileHarness defines model for Profile.Harness.
+type ProfileHarness string
+
+// Profiles defines model for Profiles.
+type Profiles struct {
+	Items []Profile `json:"items"`
+}
+
 // Schedule defines model for Schedule.
 type Schedule struct {
 	CreatedAt      time.Time                             `json:"created_at"`
@@ -265,11 +403,17 @@ type Schedule struct {
 	Name           string                                `json:"name"`
 	NextRunAt      nullable.Nullable[time.Time]          `json:"next_run_at"`
 	OwnerEmail     nullable.Nullable[string]             `json:"owner_email"`
-	Prompt         string                                `json:"prompt"`
-	SessionMode    SessionMode                           `json:"session_mode"`
-	Status         Status                                `json:"status"`
-	Timezone       string                                `json:"timezone"`
-	UpdatedAt      time.Time                             `json:"updated_at"`
+
+	// Profile Stored Orpheus profile name.
+	Profile     string      `json:"profile"`
+	Prompt      string      `json:"prompt"`
+	SessionMode SessionMode `json:"session_mode"`
+	Status      Status      `json:"status"`
+
+	// Template Stored Orpheus template name.
+	Template  string    `json:"template"`
+	Timezone  string    `json:"timezone"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// URL Absolute Space Web card URL from ORPHEUS_PUBLIC_URL, or null when not configured. Computed at response time.
 	URL nullable.Nullable[string] `json:"url"`
@@ -297,17 +441,35 @@ type SettingsBrowserAuth string
 // Status defines model for Status.
 type Status string
 
+// Template defines model for Template.
+type Template struct {
+	Description nullable.Nullable[string] `json:"description"`
+	IsDefault   bool                      `json:"is_default"`
+	Name        string                    `json:"name"`
+}
+
+// Templates defines model for Templates.
+type Templates struct {
+	Items []Template `json:"items"`
+}
+
 // UpdateSchedule defines model for UpdateSchedule.
 type UpdateSchedule struct {
-	Cron        *string                   `json:"cron,omitempty"`
-	EnvFrom     *EnvFrom                  `json:"env_from,omitempty"`
-	Model       nullable.Nullable[string] `json:"model,omitempty"`
-	Name        *string                   `json:"name,omitempty"`
-	OwnerEmail  nullable.Nullable[string] `json:"owner_email,omitempty"`
-	Prompt      *string                   `json:"prompt,omitempty"`
-	SessionMode *SessionMode              `json:"session_mode,omitempty"`
-	Status      *Status                   `json:"status,omitempty"`
-	Timezone    *string                   `json:"timezone,omitempty"`
+	Cron       *string                   `json:"cron,omitempty"`
+	EnvFrom    *EnvFrom                  `json:"env_from,omitempty"`
+	Model      nullable.Nullable[string] `json:"model,omitempty"`
+	Name       *string                   `json:"name,omitempty"`
+	OwnerEmail nullable.Nullable[string] `json:"owner_email,omitempty"`
+
+	// Profile Exact Orpheus profile name; omitted keeps the stored choice; a change starts a new reusable session.
+	Profile     *string      `json:"profile,omitempty"`
+	Prompt      *string      `json:"prompt,omitempty"`
+	SessionMode *SessionMode `json:"session_mode,omitempty"`
+	Status      *Status      `json:"status,omitempty"`
+
+	// Template Exact Orpheus template name; omitted keeps the stored choice; a change starts a new reusable session.
+	Template *string `json:"template,omitempty"`
+	Timezone *string `json:"timezone,omitempty"`
 }
 
 // Cursor defines model for Cursor.
@@ -485,10 +647,20 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/schedules/preview (the `PreviewSchedule` operationId).
 	PreviewSchedule(ctx context.Context, body PreviewScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetProfiles Get Orpheus profiles and the creation default
+	//
+	// Corresponds with GET /api/v1/schedules/profiles (the `GetProfiles` operationId).
+	GetProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetSettings Get allowed environment names
 	//
 	// Corresponds with GET /api/v1/schedules/settings (the `GetSettings` operationId).
 	GetSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTemplates Get Orpheus templates and the creation default
+	//
+	// Corresponds with GET /api/v1/schedules/templates (the `GetTemplates` operationId).
+	GetTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteSchedule Soft delete a schedule
 	//
@@ -659,11 +831,41 @@ func (c *Client) PreviewSchedule(ctx context.Context, body PreviewScheduleJSONRe
 	return c.Client.Do(req)
 }
 
+// GetProfiles Get Orpheus profiles and the creation default
+//
+// Corresponds with GET /api/v1/schedules/profiles (the `GetProfiles` operationId).
+func (c *Client) GetProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProfilesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetSettings Get allowed environment names
 //
 // Corresponds with GET /api/v1/schedules/settings (the `GetSettings` operationId).
 func (c *Client) GetSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSettingsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTemplates Get Orpheus templates and the creation default
+//
+// Corresponds with GET /api/v1/schedules/templates (the `GetTemplates` operationId).
+func (c *Client) GetTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1088,6 +1290,33 @@ func NewPreviewScheduleRequestWithBody(server string, contentType string, body i
 	return req, nil
 }
 
+// NewGetProfilesRequest constructs an http.Request for the GetProfiles method
+func NewGetProfilesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/schedules/profiles")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetSettingsRequest constructs an http.Request for the GetSettings method
 func NewGetSettingsRequest(server string) (*http.Request, error) {
 	var err error
@@ -1098,6 +1327,33 @@ func NewGetSettingsRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/schedules/settings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetTemplatesRequest constructs an http.Request for the GetTemplates method
+func NewGetTemplatesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/schedules/templates")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1640,12 +1896,26 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/schedules/preview (the `PreviewSchedule` operationId).
 	PreviewScheduleWithResponse(ctx context.Context, body PreviewScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewScheduleHTTPResponse, error)
 
+	// GetProfilesWithResponse Get Orpheus profiles and the creation default
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/schedules/profiles (the `GetProfiles` operationId).
+	GetProfilesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetProfilesHTTPResponse, error)
+
 	// GetSettingsWithResponse Get allowed environment names
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/schedules/settings (the `GetSettings` operationId).
 	GetSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSettingsHTTPResponse, error)
+
+	// GetTemplatesWithResponse Get Orpheus templates and the creation default
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/schedules/templates (the `GetTemplates` operationId).
+	GetTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTemplatesHTTPResponse, error)
 
 	// DeleteScheduleWithResponse Soft delete a schedule
 	//
@@ -1930,6 +2200,54 @@ func (r PreviewScheduleHTTPResponse) ContentType() string {
 	return ""
 }
 
+type GetProfilesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Profiles
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetProfilesHTTPResponse) GetJSON200() *Profiles {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetProfilesHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetProfilesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProfilesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProfilesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetProfilesHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetSettingsHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1972,6 +2290,54 @@ func (r GetSettingsHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetSettingsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetTemplatesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Templates
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTemplatesHTTPResponse) GetJSON200() *Templates {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetTemplatesHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTemplatesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTemplatesHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2563,6 +2929,19 @@ func (c *ClientWithResponses) PreviewScheduleWithResponse(ctx context.Context, b
 	return ParsePreviewScheduleHTTPResponse(rsp)
 }
 
+// GetProfilesWithResponse Get Orpheus profiles and the creation default
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/schedules/profiles (the `GetProfiles` operationId).
+func (c *ClientWithResponses) GetProfilesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetProfilesHTTPResponse, error) {
+	rsp, err := c.GetProfiles(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProfilesHTTPResponse(rsp)
+}
+
 // GetSettingsWithResponse Get allowed environment names
 //
 // Returns a wrapper object for the known response body format(s).
@@ -2574,6 +2953,19 @@ func (c *ClientWithResponses) GetSettingsWithResponse(ctx context.Context, reqEd
 		return nil, err
 	}
 	return ParseGetSettingsHTTPResponse(rsp)
+}
+
+// GetTemplatesWithResponse Get Orpheus templates and the creation default
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/schedules/templates (the `GetTemplates` operationId).
+func (c *ClientWithResponses) GetTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTemplatesHTTPResponse, error) {
+	rsp, err := c.GetTemplates(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesHTTPResponse(rsp)
 }
 
 // DeleteScheduleWithResponse Soft delete a schedule
@@ -2870,6 +3262,39 @@ func ParsePreviewScheduleHTTPResponse(rsp *http.Response) (*PreviewScheduleHTTPR
 	return response, nil
 }
 
+// ParseGetProfilesHTTPResponse parses an HTTP response from a GetProfilesWithResponse call
+func ParseGetProfilesHTTPResponse(rsp *http.Response) (*GetProfilesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProfilesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Profiles
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetSettingsHTTPResponse parses an HTTP response from a GetSettingsWithResponse call
 func ParseGetSettingsHTTPResponse(rsp *http.Response) (*GetSettingsHTTPResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -2886,6 +3311,39 @@ func ParseGetSettingsHTTPResponse(rsp *http.Response) (*GetSettingsHTTPResponse,
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Settings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTemplatesHTTPResponse parses an HTTP response from a GetTemplatesWithResponse call
+func ParseGetTemplatesHTTPResponse(rsp *http.Response) (*GetTemplatesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Templates
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

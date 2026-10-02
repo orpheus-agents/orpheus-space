@@ -53,6 +53,10 @@ func env(key, fallback string) string {
 	}
 	return fallback
 }
+
+// FilePath returns the execution TOML path without loading configuration.
+func FilePath() string { return env("ORPHEUS_CONFIG_FILE", "orpheus-space.toml") }
+
 func Load() (Config, error)       { return load(true) }
 func LoadWorker() (Config, error) { return load(false) }
 func load(browser bool) (Config, error) {
@@ -131,7 +135,7 @@ func load(browser bool) (Config, error) {
 		return c, errors.New("invalid HARNESS_ENV_ALLOWLIST")
 	}
 	c.AllowedEnv = allowed
-	file, err := os.Open(env("ORPHEUS_CONFIG_FILE", "orpheus-space.toml"))
+	file, err := os.Open(FilePath())
 	if err != nil {
 		return c, errors.New("cannot open ORPHEUS_CONFIG_FILE")
 	}
