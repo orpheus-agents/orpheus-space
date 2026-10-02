@@ -22,7 +22,7 @@ start-worker: migrate
 	$(COMPOSE) --profile worker up -d --wait worker
 
 stop:
-	$(COMPOSE) --profile tools --profile test --profile worker down
+	$(COMPOSE) --profile tools --profile test --profile worker --profile saml-test down
 
 migrate:
 	$(COMPOSE) build app
@@ -123,6 +123,12 @@ check: generate-check
 smoke: tools docker-build
 	$(COMPOSE) --profile test up -d --wait test-db
 	sh tools/smoke.sh
+
+# Isolated SAML round trip with a real IdP; no production credentials or UI.
+.PHONY: test-saml
+test-saml: tools
+	$(COMPOSE) --profile test --profile saml-test up -d --wait test-db test-keycloak
+	$(COMPOSE) --profile tools run --rm --no-deps -e TEST_KEYCLOAK_URL=http://test-keycloak:8080 tools go test -race -tags integration -count=1 -timeout=3m -run TestKeycloakRoundTrip ./internal/httpserver
 
 .PHONY: build-cli release-cli
 build-cli: tools

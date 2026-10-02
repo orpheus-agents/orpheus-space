@@ -32,7 +32,7 @@ func TestUpDownUp(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, table := range []string{"schedules", "schedule_create_keys"} {
+	for _, table := range []string{"schedules", "schedule_create_keys", "browser_sessions", "browser_login_requests"} {
 		var exists bool
 		if err = pool.QueryRow(t.Context(), "SELECT to_regclass($1) IS NOT NULL", table).Scan(&exists); err != nil || !exists {
 			t.Fatal(table, err)

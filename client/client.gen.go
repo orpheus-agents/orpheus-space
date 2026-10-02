@@ -23,6 +23,7 @@ import (
 const (
 	AuthSessionModeAPIOnly   AuthSessionMode = "api_only"
 	AuthSessionModeAnonymous AuthSessionMode = "anonymous"
+	AuthSessionModeSaml      AuthSessionMode = "saml"
 )
 
 // Valid indicates whether the value is a known member of the AuthSessionMode enum.
@@ -32,35 +33,7 @@ func (e AuthSessionMode) Valid() bool {
 		return true
 	case AuthSessionModeAnonymous:
 		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for NullableOccurrenceState.
-const (
-	NullableOccurrenceStateAccepted    NullableOccurrenceState = "accepted"
-	NullableOccurrenceStateCancelled   NullableOccurrenceState = "cancelled"
-	NullableOccurrenceStateDispatching NullableOccurrenceState = "dispatching"
-	NullableOccurrenceStateFailed      NullableOccurrenceState = "failed"
-	NullableOccurrenceStatePending     NullableOccurrenceState = "pending"
-	NullableOccurrenceStateSkipped     NullableOccurrenceState = "skipped"
-)
-
-// Valid indicates whether the value is a known member of the NullableOccurrenceState enum.
-func (e NullableOccurrenceState) Valid() bool {
-	switch e {
-	case NullableOccurrenceStateAccepted:
-		return true
-	case NullableOccurrenceStateCancelled:
-		return true
-	case NullableOccurrenceStateDispatching:
-		return true
-	case NullableOccurrenceStateFailed:
-		return true
-	case NullableOccurrenceStatePending:
-		return true
-	case NullableOccurrenceStateSkipped:
+	case AuthSessionModeSaml:
 		return true
 	default:
 		return false
@@ -69,28 +42,28 @@ func (e NullableOccurrenceState) Valid() bool {
 
 // Defines values for OccurrenceState.
 const (
-	OccurrenceStateAccepted    OccurrenceState = "accepted"
-	OccurrenceStateCancelled   OccurrenceState = "cancelled"
-	OccurrenceStateDispatching OccurrenceState = "dispatching"
-	OccurrenceStateFailed      OccurrenceState = "failed"
-	OccurrenceStatePending     OccurrenceState = "pending"
-	OccurrenceStateSkipped     OccurrenceState = "skipped"
+	Accepted    OccurrenceState = "accepted"
+	Cancelled   OccurrenceState = "cancelled"
+	Dispatching OccurrenceState = "dispatching"
+	Failed      OccurrenceState = "failed"
+	Pending     OccurrenceState = "pending"
+	Skipped     OccurrenceState = "skipped"
 )
 
 // Valid indicates whether the value is a known member of the OccurrenceState enum.
 func (e OccurrenceState) Valid() bool {
 	switch e {
-	case OccurrenceStateAccepted:
+	case Accepted:
 		return true
-	case OccurrenceStateCancelled:
+	case Cancelled:
 		return true
-	case OccurrenceStateDispatching:
+	case Dispatching:
 		return true
-	case OccurrenceStateFailed:
+	case Failed:
 		return true
-	case OccurrenceStatePending:
+	case Pending:
 		return true
-	case OccurrenceStateSkipped:
+	case Skipped:
 		return true
 	default:
 		return false
@@ -119,6 +92,7 @@ func (e SessionMode) Valid() bool {
 const (
 	SettingsBrowserAuthAPIOnly   SettingsBrowserAuth = "api_only"
 	SettingsBrowserAuthAnonymous SettingsBrowserAuth = "anonymous"
+	SettingsBrowserAuthSaml      SettingsBrowserAuth = "saml"
 )
 
 // Valid indicates whether the value is a known member of the SettingsBrowserAuth enum.
@@ -127,6 +101,8 @@ func (e SettingsBrowserAuth) Valid() bool {
 	case SettingsBrowserAuthAPIOnly:
 		return true
 	case SettingsBrowserAuthAnonymous:
+		return true
+	case SettingsBrowserAuthSaml:
 		return true
 	default:
 		return false
@@ -153,12 +129,15 @@ func (e Status) Valid() bool {
 
 // AuthSession defines model for AuthSession.
 type AuthSession struct {
-	Authenticated bool                                      `json:"authenticated"`
-	ExpiresAt     nullable.Nullable[time.Time]              `json:"expires_at"`
-	Mode          AuthSessionMode                           `json:"mode"`
-	ReadAccess    bool                                      `json:"read_access"`
-	User          nullable.Nullable[map[string]interface{}] `json:"user"`
-	WriteAccess   bool                                      `json:"write_access"`
+	Authenticated bool                         `json:"authenticated"`
+	ExpiresAt     nullable.Nullable[time.Time] `json:"expires_at"`
+	Mode          AuthSessionMode              `json:"mode"`
+	ReadAccess    bool                         `json:"read_access"`
+	User          nullable.Nullable[struct {
+		DisplayName string `json:"display_name"`
+		Subject     string `json:"subject"`
+	}] `json:"user"`
+	WriteAccess bool `json:"write_access"`
 }
 
 // AuthSessionMode defines model for AuthSession.Mode.
@@ -196,13 +175,10 @@ type NullableOccurrence struct {
 	ScheduleID         openapi_types.UUID                    `json:"schedule_id"`
 	ScheduledAt        time.Time                             `json:"scheduled_at"`
 	SessionID          nullable.Nullable[openapi_types.UUID] `json:"session_id"`
-	State              NullableOccurrenceState               `json:"state"`
+	State              OccurrenceState                       `json:"state"`
 	SyncErrorCode      nullable.Nullable[string]             `json:"sync_error_code"`
 	UpdatedAt          time.Time                             `json:"updated_at"`
 }
-
-// NullableOccurrenceState defines model for NullableOccurrence.State.
-type NullableOccurrenceState string
 
 // Occurrence defines model for Occurrence.
 type Occurrence struct {
@@ -225,9 +201,6 @@ type Occurrence struct {
 	UpdatedAt          time.Time                             `json:"updated_at"`
 }
 
-// OccurrenceState defines model for Occurrence.State.
-type OccurrenceState string
-
 // OccurrencePage defines model for OccurrencePage.
 type OccurrencePage struct {
 	Items      []Occurrence              `json:"items"`
@@ -249,6 +222,9 @@ type OccurrenceResult struct {
 	}] `json:"final_message"`
 	RunStatus string `json:"run_status"`
 }
+
+// OccurrenceState defines model for OccurrenceState.
+type OccurrenceState string
 
 // Preview defines model for Preview.
 type Preview struct {
@@ -375,6 +351,11 @@ type ListOccurrencesParams struct {
 
 	// Cursor Opaque position bound to normalized filters. New inserts are excluded from an ongoing traversal.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// BrowserLoginParams defines parameters for BrowserLogin.
+type BrowserLoginParams struct {
+	Next *string `form:"next,omitempty" json:"next,omitempty"`
 }
 
 // CreateScheduleJSONRequestBody defines body for CreateSchedule for application/json ContentType.
@@ -546,6 +527,32 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
 	ResetSession(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BrowserCallback Consume a signed SAML HTTP-POST response
+	//
+	// SAML mode only. Body is application/x-www-form-urlencoded with exactly one SAMLResponse and RelayState, at most 1 MiB. One-time request and browser nonce are required. Unsolicited responses are rejected.
+	//
+	// Corresponds with POST /auth/callback (the `BrowserCallback` operationId).
+	BrowserCallback(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BrowserLogin Start SP-initiated SAML login
+	//
+	// SAML mode only; otherwise 404 auth_not_enabled. next must be a local absolute path (not auth routes); default /api/v1/auth/session. No Host or proxy header trust.
+	//
+	// Corresponds with GET /auth/login (the `BrowserLogin` operationId).
+	BrowserLogin(ctx context.Context, params *BrowserLoginParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BrowserLogout Revoke the local browser session
+	//
+	// Requires the configured Origin and X-Orpheus-CSRF header equal to 1. Idempotent; clears the cookie. Does not terminate the IdP session.
+	//
+	// Corresponds with POST /auth/logout (the `BrowserLogout` operationId).
+	BrowserLogout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SamlMetadata Read service provider metadata
+	//
+	// Corresponds with GET /saml/metadata (the `SamlMetadata` operationId).
+	SamlMetadata(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetAuthSession Get browser access state
@@ -775,6 +782,72 @@ func (c *Client) GetOccurrenceResult(ctx context.Context, id ID, occurrenceID Oc
 // Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
 func (c *Client) ResetSession(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewResetSessionRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BrowserCallback Consume a signed SAML HTTP-POST response
+//
+// SAML mode only. Body is application/x-www-form-urlencoded with exactly one SAMLResponse and RelayState, at most 1 MiB. One-time request and browser nonce are required. Unsolicited responses are rejected.
+//
+// Corresponds with POST /auth/callback (the `BrowserCallback` operationId).
+func (c *Client) BrowserCallback(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBrowserCallbackRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BrowserLogin Start SP-initiated SAML login
+//
+// SAML mode only; otherwise 404 auth_not_enabled. next must be a local absolute path (not auth routes); default /api/v1/auth/session. No Host or proxy header trust.
+//
+// Corresponds with GET /auth/login (the `BrowserLogin` operationId).
+func (c *Client) BrowserLogin(ctx context.Context, params *BrowserLoginParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBrowserLoginRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BrowserLogout Revoke the local browser session
+//
+// Requires the configured Origin and X-Orpheus-CSRF header equal to 1. Idempotent; clears the cookie. Does not terminate the IdP session.
+//
+// Corresponds with POST /auth/logout (the `BrowserLogout` operationId).
+func (c *Client) BrowserLogout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBrowserLogoutRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SamlMetadata Read service provider metadata
+//
+// Corresponds with GET /saml/metadata (the `SamlMetadata` operationId).
+func (c *Client) SamlMetadata(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSamlMetadataRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1340,6 +1413,141 @@ func NewResetSessionRequest(server string, id ID) (*http.Request, error) {
 	return req, nil
 }
 
+// NewBrowserCallbackRequest constructs an http.Request for the BrowserCallback method
+func NewBrowserCallbackRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/callback")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewBrowserLoginRequest constructs an http.Request for the BrowserLogin method
+func NewBrowserLoginRequest(server string, params *BrowserLoginParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/login")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Next != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "next", *params.Next, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewBrowserLogoutRequest constructs an http.Request for the BrowserLogout method
+func NewBrowserLogoutRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/logout")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSamlMetadataRequest constructs an http.Request for the SamlMetadata method
+func NewSamlMetadataRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/saml/metadata")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -1488,6 +1696,40 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
 	ResetSessionWithResponse(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*ResetSessionHTTPResponse, error)
+
+	// BrowserCallbackWithResponse Consume a signed SAML HTTP-POST response
+	//
+	// SAML mode only. Body is application/x-www-form-urlencoded with exactly one SAMLResponse and RelayState, at most 1 MiB. One-time request and browser nonce are required. Unsolicited responses are rejected.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/callback (the `BrowserCallback` operationId).
+	BrowserCallbackWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*BrowserCallbackHTTPResponse, error)
+
+	// BrowserLoginWithResponse Start SP-initiated SAML login
+	//
+	// SAML mode only; otherwise 404 auth_not_enabled. next must be a local absolute path (not auth routes); default /api/v1/auth/session. No Host or proxy header trust.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /auth/login (the `BrowserLogin` operationId).
+	BrowserLoginWithResponse(ctx context.Context, params *BrowserLoginParams, reqEditors ...RequestEditorFn) (*BrowserLoginHTTPResponse, error)
+
+	// BrowserLogoutWithResponse Revoke the local browser session
+	//
+	// Requires the configured Origin and X-Orpheus-CSRF header equal to 1. Idempotent; clears the cookie. Does not terminate the IdP session.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/logout (the `BrowserLogout` operationId).
+	BrowserLogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*BrowserLogoutHTTPResponse, error)
+
+	// SamlMetadataWithResponse Read service provider metadata
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /saml/metadata (the `SamlMetadata` operationId).
+	SamlMetadataWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SamlMetadataHTTPResponse, error)
 }
 
 type GetAuthSessionHTTPResponse struct {
@@ -2059,6 +2301,184 @@ func (r ResetSessionHTTPResponse) ContentType() string {
 	return ""
 }
 
+// BrowserCallbackHTTPResponse303Headers the declared response headers of an HTTP 303 response for BrowserCallback
+type BrowserCallbackHTTPResponse303Headers struct {
+	Location *string
+}
+
+type BrowserCallbackHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+	// Headers303 the parsed response headers for an HTTP 303 response
+	Headers303 *BrowserCallbackHTTPResponse303Headers
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r BrowserCallbackHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r BrowserCallbackHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BrowserCallbackHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BrowserCallbackHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BrowserCallbackHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// BrowserLoginHTTPResponse302Headers the declared response headers of an HTTP 302 response for BrowserLogin
+type BrowserLoginHTTPResponse302Headers struct {
+	Location *string
+}
+
+type BrowserLoginHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+	// Headers302 the parsed response headers for an HTTP 302 response
+	Headers302 *BrowserLoginHTTPResponse302Headers
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r BrowserLoginHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r BrowserLoginHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BrowserLoginHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BrowserLoginHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BrowserLoginHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type BrowserLogoutHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r BrowserLogoutHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r BrowserLogoutHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BrowserLogoutHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BrowserLogoutHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BrowserLogoutHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SamlMetadataHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r SamlMetadataHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SamlMetadataHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SamlMetadataHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SamlMetadataHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SamlMetadataHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetAuthSessionWithResponse Get browser access state
 //
 // Returns a wrapper object for the known response body format(s).
@@ -2252,6 +2672,64 @@ func (c *ClientWithResponses) ResetSessionWithResponse(ctx context.Context, id I
 		return nil, err
 	}
 	return ParseResetSessionHTTPResponse(rsp)
+}
+
+// BrowserCallbackWithResponse Consume a signed SAML HTTP-POST response
+//
+// SAML mode only. Body is application/x-www-form-urlencoded with exactly one SAMLResponse and RelayState, at most 1 MiB. One-time request and browser nonce are required. Unsolicited responses are rejected.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/callback (the `BrowserCallback` operationId).
+func (c *ClientWithResponses) BrowserCallbackWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*BrowserCallbackHTTPResponse, error) {
+	rsp, err := c.BrowserCallback(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBrowserCallbackHTTPResponse(rsp)
+}
+
+// BrowserLoginWithResponse Start SP-initiated SAML login
+//
+// SAML mode only; otherwise 404 auth_not_enabled. next must be a local absolute path (not auth routes); default /api/v1/auth/session. No Host or proxy header trust.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /auth/login (the `BrowserLogin` operationId).
+func (c *ClientWithResponses) BrowserLoginWithResponse(ctx context.Context, params *BrowserLoginParams, reqEditors ...RequestEditorFn) (*BrowserLoginHTTPResponse, error) {
+	rsp, err := c.BrowserLogin(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBrowserLoginHTTPResponse(rsp)
+}
+
+// BrowserLogoutWithResponse Revoke the local browser session
+//
+// Requires the configured Origin and X-Orpheus-CSRF header equal to 1. Idempotent; clears the cookie. Does not terminate the IdP session.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/logout (the `BrowserLogout` operationId).
+func (c *ClientWithResponses) BrowserLogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*BrowserLogoutHTTPResponse, error) {
+	rsp, err := c.BrowserLogout(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBrowserLogoutHTTPResponse(rsp)
+}
+
+// SamlMetadataWithResponse Read service provider metadata
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /saml/metadata (the `SamlMetadata` operationId).
+func (c *ClientWithResponses) SamlMetadataWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SamlMetadataHTTPResponse, error) {
+	rsp, err := c.SamlMetadata(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSamlMetadataHTTPResponse(rsp)
 }
 
 // ParseGetAuthSessionHTTPResponse parses an HTTP response from a GetAuthSessionWithResponse call
@@ -2634,6 +3112,145 @@ func ParseResetSessionHTTPResponse(rsp *http.Response) (*ResetSessionHTTPRespons
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseBrowserCallbackHTTPResponse parses an HTTP response from a BrowserCallbackWithResponse call
+func ParseBrowserCallbackHTTPResponse(rsp *http.Response) (*BrowserCallbackHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BrowserCallbackHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 303:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 303:
+		var headers BrowserCallbackHTTPResponse303Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers303 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseBrowserLoginHTTPResponse parses an HTTP response from a BrowserLoginWithResponse call
+func ParseBrowserLoginHTTPResponse(rsp *http.Response) (*BrowserLoginHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BrowserLoginHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 302:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 302:
+		var headers BrowserLoginHTTPResponse302Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers302 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseBrowserLogoutHTTPResponse parses an HTTP response from a BrowserLogoutWithResponse call
+func ParseBrowserLogoutHTTPResponse(rsp *http.Response) (*BrowserLogoutHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BrowserLogoutHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSamlMetadataHTTPResponse parses an HTTP response from a SamlMetadataWithResponse call
+func ParseSamlMetadataHTTPResponse(rsp *http.Response) (*SamlMetadataHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SamlMetadataHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

@@ -159,7 +159,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 	failures := make(chan error, 2)
 	go func() { failures <- servers[0].Serve(apiListener) }()
 	go func() { failures <- servers[1].Serve(systemListener) }()
-	slog.Info("Space API started", "address", cfg.APIAddress, "auth_mode", cfg.BrowserAuth)
+	slog.Info("Space API started", "address", cfg.APIAddress, "auth_mode", cfg.Auth.Mode)
 	var cause error
 	select {
 	case <-ctx.Done():

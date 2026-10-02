@@ -12,8 +12,8 @@
 Shared settings for Orpheus agent users. Go 1.27, PostgreSQL 16.
 
 Space manages and executes schedules through the Orpheus core. The API and worker
-are separate commands using the same database and image. SAML and the web
-interface follow in separate implementation stages.
+are separate commands using the same database and image.
+[Orpheus Space Web](https://github.com/orpheus-agents/orpheus-space-web) provides the browser interface with its own SAML login.
 
 ## Local development
 
@@ -131,8 +131,8 @@ Missing runs return 404, not-started occurrences 409, and core auth/network fail
 | `ORPHEUS_BASE_URL`, `ORPHEUS_API_KEY` | Core origin/key for dispatch, polling and explicit results |
 | `DATABASE_URL` | Space's PostgreSQL DSN; required |
 | `PUBLIC_API_KEYS` | JSON array of Space Bearer keys |
-| `ORPHEUS_BROWSER_AUTH` | `api_only` (default) or explicit local `anonymous` |
-| `ORPHEUS_PUBLIC_URL` | Exact HTTP(S) origin; required for anonymous browser writes |
+| `ORPHEUS_BROWSER_AUTH` | `api_only` (default), explicit local `anonymous`, or `saml` |
+| `ORPHEUS_PUBLIC_URL` | Exact HTTP(S) origin; required for browser writes; HTTPS for SAML |
 | `ORPHEUS_CONFIG_FILE` | Base execution TOML, default `orpheus-space.toml` |
 | `ORPHEUS_MIGRATIONS_DIR` | Goose files, default `migrations` |
 | `HARNESS_ENV_ALLOWLIST` | JSON array of permitted ENV names |
@@ -142,10 +142,36 @@ Missing runs return 404, not-started occurrences 409, and core auth/network fail
 | `MAX_REQUEST_BYTES` | Body limit, default 1048576, range 4096–1048576 |
 
 A valid Bearer key grants read/write access. Any supplied invalid or empty
-Authorization header returns 401, without anonymous fallback. Without Bearer,
-api_only returns 401; anonymous permits reads and requires the exact configured
-Origin and `X-Orpheus-CSRF: 1` on POST/PATCH/DELETE. Cookies and client email headers
-do not confer access. SAML is not enabled yet; unknown/unsupported modes fail startup.
+Authorization header returns 401 without falling back to cookies or anonymous access.
+Without Bearer, `api_only` returns 401, `anonymous` allows reads/writes, and `saml`
+requires a valid Space browser session. Cookie and anonymous writes require the
+exact configured Origin and `X-Orpheus-CSRF: 1`. The IdP callback validates its
+signed response, pending request and browser nonce instead of that CSRF header.
+
+SAML uses the same configuration names and SP-initiated flow as core:
+`SAML_SP_ENTITY_ID`, `SAML_IDP_METADATA_FILE`, `SAML_SP_CERT_FILE`,
+`SAML_SP_KEY_FILE`, `BROWSER_SESSION_TTL_SECONDS` (43200 by default, 300–86400).
+Configure a separate Keycloak client, HTTPS public origin, and POST ACS
+`<origin>/auth/callback`; metadata is served at `/saml/metadata`.
+The certificate/key can be shared with core when configured by the operator;
+client identity, database records and cookies remain separate.
+`serve` reads metadata and keys at startup; restart it after rotating files.
+`worker` does not read SAML files or require these settings.
+
+`GET /api/v1/auth/session` reports mode, authenticated/read/write access, nullable
+subject/display name and expiry. `/auth/login?next=/schedules` starts login;
+`next` must be a local path. `POST /auth/logout` requires Origin/CSRF and revokes
+only Space's local session. It does not sign out of Keycloak or core. The
+`__Host-orpheus_space_session` cookie is Secure, HttpOnly, SameSite=Lax, Path=/,
+without Domain. Core cookies and client email headers do not confer access.
+No authorization request calls core. Auth storage failure returns 503 without
+clearing the cookie. Invalid/expired cookies produce 401 on protected routes;
+the public session endpoint clears them and reports an unauthenticated state.
+
+Only hashes of opaque session/nonce tokens are stored. Pending login consumption
+and session creation are atomic; expiry cleanup runs under worker ownership every
+10 minutes in bounded batches. Browser sessions grant full schedule access,
+including editing the owner email. Login/callback/metadata return 404 outside SAML.
 
 The TOML configuration follows core's agent/sandbox/limits structure; see
 [orpheus-space.toml.dist](orpheus-space.toml.dist). `instructions_file` and inline
@@ -171,9 +197,13 @@ All tools run in containers; host Go/Python is unnecessary.
 | `make test-client` / `build-client` | Public client checks |
 | `make lint` / `deadcode` / `vuln` | API/Go/Docker lint, dead code, vulnerability scans |
 | `make build` / `docker-build` / `smoke` | Compile/build and test production image |
+| `make test-saml` | Signed SAML round trip against an isolated test Keycloak |
 | `make check` | Full applicable suite |
 
 Tests use isolated schemas on `test-db` and exercise migrations Up/Down/Up.
+Unit and integration tests sign SAML responses with a fixture IdP; `make test-saml`
+additionally runs login, SSO re-login, logout and revocation against a real Keycloak
+in Compose (profile `saml-test`, no production credentials). Run it after SAML changes.
 `/health` checks the process; `/ready` requires all migrations shipped with the
 service to be applied. System routes are not mounted on the public API listener.
 SIGTERM drains HTTP requests. Unexpected API failures log the method, route pattern, innermost error type and,

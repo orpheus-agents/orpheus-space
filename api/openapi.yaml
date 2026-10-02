@@ -12,6 +12,7 @@ servers:
 - url: http://localhost:8010
 security:
 - bearerAuth: []
+- browserSession: []
 - {}
 tags:
 - name: Schedules
@@ -234,8 +235,91 @@ paths:
                 "$ref": "#/components/schemas/Schedule"
         default:
           "$ref": "#/components/responses/Problem"
+  /auth/login:
+    get:
+      operationId: BrowserLogin
+      summary: Start SP-initiated SAML login
+      security: []
+      description: SAML mode only; otherwise 404 auth_not_enabled. next must be a local absolute path (not auth routes); default /api/v1/auth/session. No Host or proxy header trust.
+      parameters:
+      - in: query
+        name: next
+        schema:
+          type: string
+          maxLength: 2048
+      responses:
+        "302":
+          description: Start SP-initiated SAML login
+          headers:
+            Location:
+              schema:
+                type: string
+              description: SAML IdP URL.
+        default:
+          description: Invalid return path (400), authentication disabled (404), request validation failed (422), or authentication/storage unavailable (503).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /auth/callback:
+    post:
+      operationId: BrowserCallback
+      summary: Consume a signed SAML HTTP-POST response
+      security: []
+      description: SAML mode only. Body is application/x-www-form-urlencoded with exactly one SAMLResponse and RelayState, at most 1 MiB. One-time request and browser nonce are required. Unsolicited responses are rejected.
+      responses:
+        "303":
+          description: Consume a signed SAML HTTP-POST response
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Validated local return path.
+        default:
+          description: Invalid login state (400), invalid SAML response (401), authentication disabled (404), oversized form (413), or authentication/storage unavailable (503).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /auth/logout:
+    post:
+      operationId: BrowserLogout
+      summary: Revoke the local browser session
+      security: []
+      description: Requires the configured Origin and X-Orpheus-CSRF header equal to 1. Idempotent; clears the cookie. Does not terminate the IdP session.
+      responses:
+        "204":
+          description: Revoke the local browser session
+        default:
+          description: Invalid origin or CSRF header (403), or storage unavailable (503).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /saml/metadata:
+    get:
+      operationId: SamlMetadata
+      summary: Read service provider metadata
+      security: []
+      responses:
+        "200":
+          description: Read service provider metadata
+          content:
+            application/samlmetadata+xml:
+              schema:
+                type: string
+        default:
+          description: Authentication disabled (404), or metadata unavailable (503).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
 components:
   securitySchemes:
+    browserSession:
+      type: apiKey
+      in: cookie
+      name: __Host-orpheus_space_session
     bearerAuth:
       type: http
       scheme: bearer
@@ -527,6 +611,7 @@ components:
           enum:
           - api_only
           - anonymous
+          - saml
     PreviewInput:
       type: object
       additionalProperties: false
@@ -569,6 +654,7 @@ components:
           enum:
           - api_only
           - anonymous
+          - saml
         authenticated:
           type: boolean
         read_access:
@@ -579,6 +665,12 @@ components:
           type: object
           nullable: true
           additionalProperties: false
+          required: [subject, display_name]
+          properties:
+            subject:
+              type: string
+            display_name:
+              type: string
         expires_at:
           type: string
           format: date-time
@@ -615,14 +707,7 @@ components:
           type: string
           format: date-time
         state:
-          type: string
-          enum:
-          - pending
-          - dispatching
-          - accepted
-          - skipped
-          - failed
-          - cancelled
+          "$ref": "#/components/schemas/OccurrenceState"
         created_at:
           type: string
           format: date-time
@@ -729,6 +814,15 @@ components:
             created_at:
               type: string
               format: date-time
+    OccurrenceState:
+      type: string
+      enum:
+      - pending
+      - dispatching
+      - accepted
+      - skipped
+      - failed
+      - cancelled
     NullableOccurrence:
       type: object
       additionalProperties: false
@@ -761,14 +855,7 @@ components:
           type: string
           format: date-time
         state:
-          type: string
-          enum:
-          - pending
-          - dispatching
-          - accepted
-          - skipped
-          - failed
-          - cancelled
+          "$ref": "#/components/schemas/OccurrenceState"
         created_at:
           type: string
           format: date-time
