@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -384,7 +385,7 @@ func TestSnapshotFingerprintAndNewMode(t *testing.T) {
 	row := db.Schedule{ID: uuid.New(), Prompt: "first", Timezone: "UTC", SessionMode: "reuse", EnvFrom: []string{"A", "B"}}
 	occ := db.ScheduleOccurrence{ID: uuid.New(), ScheduledAt: time.Now()}
 	now := time.Now()
-	first, err := Builder(cfg)(row, occ, now)
+	first, err := Builder(cfg)(row, occ, nil, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,17 +393,17 @@ func TestSnapshotFingerprintAndNewMode(t *testing.T) {
 	row.ReusableFingerprint = &first.Fingerprint
 	row.Prompt = "changed"
 	row.Name = "renamed"
-	reused, err := Builder(cfg)(row, occ, now)
+	reused, err := Builder(cfg)(row, occ, nil, now)
 	if err != nil || reused.Path == "/api/v1/sessions" || reused.Fingerprint != first.Fingerprint {
 		t.Fatal(reused, err)
 	}
 	cfg.Execution.Agent.Instructions = new("changed base instructions")
-	fresh, err := Builder(cfg)(row, occ, now)
+	fresh, err := Builder(cfg)(row, occ, nil, now)
 	if err != nil || fresh.Path != "/api/v1/sessions" || fresh.Fingerprint == first.Fingerprint {
 		t.Fatal(fresh, err)
 	}
 	row.SessionMode = "new"
-	fresh, err = Builder(cfg)(row, occ, now)
+	fresh, err = Builder(cfg)(row, occ, nil, now)
 	if err != nil || fresh.Reusable {
 		t.Fatal(fresh, err)
 	}
@@ -540,5 +541,68 @@ func TestMissingRunBlocksUntilRecovered(t *testing.T) {
 	rows = history(t, w, task.ID)
 	if len(f.requests) != 2 || !rows[0].ScheduledAt.Equal(*now) || rows[1].SyncErrorCode != nil || rows[1].FinishedAt == nil || !rows[1].FinishedAt.Equal(*run.FinishedAt) {
 		t.Fatal("did not recover using actual completion boundary", rows)
+	}
+}
+
+func TestLastSuccessSurvivesFailureAndRetry(t *testing.T) {
+	w, f, now, task := fixture(t)
+	*now = now.Add(time.Minute)
+	tick(t, w, f)
+	if strings.Contains(string(f.requests[0].body), "last_successful_run") {
+		t.Fatal("first run has previous success")
+	}
+	first := history(t, w, task.ID)[0]
+	run := f.runs[*first.RunID]
+	run.ExecutionStartedAt = new(now.Add(time.Second))
+	run.FinishedAt = new(now.Add(10 * time.Second))
+	run.Status = coreapi.RunStatusCompleted
+	f.runs[run.ID] = run
+	*now = now.Add(time.Minute)
+	tick(t, w, f)
+	var second coreapi.CreateRun
+	if err := json.Unmarshal(f.requests[1].body, &second); err != nil {
+		t.Fatal(err)
+	}
+	if !maps.Equal(readFrontMatter(t, second.Messages[0].Text).LastSuccessfulRun, map[string]string{
+		"scheduled_at": "2026-10-01T00:01:00Z", "execution_started_at": "2026-10-01T00:01:01Z", "finished_at": "2026-10-01T00:01:10Z",
+	}) {
+		t.Fatal(second)
+	}
+	failed := history(t, w, task.ID)[0]
+	failedRun := f.runs[*failed.RunID]
+	failedRun.Status = coreapi.RunStatusFailed
+	failedRun.FinishedAt = new(now.Add(time.Second))
+	f.runs[failedRun.ID] = failedRun
+	*now = now.Add(10 * time.Second)
+	tick(t, w, f)
+	if _, err := w.Store.ResetSession(t.Context(), task.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.lose = true
+	*now = now.Add(50 * time.Second)
+	tick(t, w, f)
+	var third coreapi.CreateSession
+	if err := json.Unmarshal(f.requests[2].body, &third); err != nil {
+		t.Fatal(err)
+	}
+	var secondMeta, thirdMeta map[string]json.RawMessage
+	if err := json.Unmarshal(*second.Messages[0].Metadata, &secondMeta); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(*third.Messages[0].Metadata, &thirdMeta); err != nil {
+		t.Fatal(err)
+	}
+	if string(secondMeta["last_successful_run"]) != string(thirdMeta["last_successful_run"]) {
+		t.Fatal("failure/reset moved previous success")
+	}
+	// Even a later correction of stored history must not change an already prepared request.
+	if _, err := w.Store.Pool.Exec(t.Context(), "UPDATE schedule_occurrences SET finished_at=finished_at + interval '1 second' WHERE id=$1", first.ID); err != nil {
+		t.Fatal(err)
+	}
+	restarted := *w
+	*now = now.Add(10 * time.Second)
+	tick(t, &restarted, f)
+	if len(f.requests) != 4 || string(f.requests[2].body) != string(f.requests[3].body) || f.requests[2].key != f.requests[3].key {
+		t.Fatal("retry changed snapshot", f.requests)
 	}
 }

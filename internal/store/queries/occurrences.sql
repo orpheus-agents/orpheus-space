@@ -50,3 +50,9 @@ UPDATE schedule_occurrences SET run_status=$2,observed_at=$3,updated_at=$3,execu
 UPDATE schedule_occurrences SET sync_error_code=$2,next_attempt_at=$3,updated_at=$4 WHERE id=$1;
 -- name: CancelPending :exec
 UPDATE schedule_occurrences SET state='cancelled',error_code='schedule_inactive',completed_at=$2,updated_at=$2,next_attempt_at=NULL WHERE schedule_id=$1 AND state='pending';
+
+-- name: LastSuccessfulOccurrence :one
+SELECT * FROM schedule_occurrences
+WHERE schedule_id=$1 AND scheduled_at < $2 AND state='accepted'
+AND run_status='completed' AND completed_at IS NOT NULL AND finished_at IS NOT NULL
+ORDER BY scheduled_at DESC,id DESC LIMIT 1;

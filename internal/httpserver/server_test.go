@@ -285,7 +285,7 @@ func TestHistoryAndExplicitResult(t *testing.T) {
 	path := base + "/occurrences/" + occ.ID.String()
 	request(t, handler, "GET", path+"/result", "", headers, 409)
 	request(t, handler, "POST", base+"/reset-session", "", headers, 409)
-	prepared, err := storage.Prepare(t.Context(), task.ID, occ.ID, now, func(db.Schedule, db.ScheduleOccurrence, time.Time) (store.Snapshot, error) {
+	prepared, err := storage.Prepare(t.Context(), task.ID, occ.ID, now, func(db.Schedule, db.ScheduleOccurrence, *db.ScheduleOccurrence, time.Time) (store.Snapshot, error) {
 		return store.Snapshot{Path: "/api/v1/sessions", Body: []byte(`{}`), Fingerprint: "fixture"}, nil
 	})
 	if err != nil {

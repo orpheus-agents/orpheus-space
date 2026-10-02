@@ -17,7 +17,7 @@ type Snapshot struct {
 	Fingerprint string
 	Reusable    bool
 }
-type BuildSnapshot func(db.Schedule, db.ScheduleOccurrence, time.Time) (Snapshot, error)
+type BuildSnapshot func(db.Schedule, db.ScheduleOccurrence, *db.ScheduleOccurrence, time.Time) (Snapshot, error)
 
 func (s *Store) Plan(ctx context.Context, id uuid.UUID, now time.Time) error {
 	tx, err := s.Pool.Begin(ctx)
@@ -104,7 +104,15 @@ func (s *Store) Prepare(ctx context.Context, sid, id uuid.UUID, now time.Time, b
 		occ.State = "cancelled"
 		return occ, tx.Commit(ctx)
 	}
-	snapshot, err := build(row, occ, now)
+	previous, err := q.LastSuccessfulOccurrence(ctx, db.LastSuccessfulOccurrenceParams{ScheduleID: sid, ScheduledAt: occ.ScheduledAt})
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return occ, err
+	}
+	var lastSuccess *db.ScheduleOccurrence
+	if err == nil {
+		lastSuccess = &previous
+	}
+	snapshot, err := build(row, occ, lastSuccess, now)
 	if err != nil {
 		if problem, ok := errors.AsType[*schedule.Error](err); ok {
 			err = q.FinishDispatch(ctx, db.FinishDispatchParams{ID: id, State: "failed", ErrorCode: new(problem.Problem.Code), CompletedAt: new(now)})

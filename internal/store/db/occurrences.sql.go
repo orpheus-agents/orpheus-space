@@ -342,6 +342,51 @@ func (q *Queries) LastOccurrences(ctx context.Context, dollar_1 []uuid.UUID) ([]
 	return items, nil
 }
 
+const lastSuccessfulOccurrence = `-- name: LastSuccessfulOccurrence :one
+SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code FROM schedule_occurrences
+WHERE schedule_id=$1 AND scheduled_at < $2 AND state='accepted'
+AND run_status='completed' AND completed_at IS NOT NULL AND finished_at IS NOT NULL
+ORDER BY scheduled_at DESC,id DESC LIMIT 1
+`
+
+type LastSuccessfulOccurrenceParams struct {
+	ScheduleID  uuid.UUID `json:"schedule_id"`
+	ScheduledAt time.Time `json:"scheduled_at"`
+}
+
+func (q *Queries) LastSuccessfulOccurrence(ctx context.Context, arg LastSuccessfulOccurrenceParams) (ScheduleOccurrence, error) {
+	row := q.db.QueryRow(ctx, lastSuccessfulOccurrence, arg.ScheduleID, arg.ScheduledAt)
+	var i ScheduleOccurrence
+	err := row.Scan(
+		&i.ID,
+		&i.Sequence,
+		&i.ScheduleID,
+		&i.ScheduledAt,
+		&i.State,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+		&i.RequestPath,
+		&i.RequestBody,
+		&i.RequestKey,
+		&i.Fingerprint,
+		&i.Reusable,
+		&i.Uncertain,
+		&i.Attempts,
+		&i.NextAttemptAt,
+		&i.ErrorCode,
+		&i.SessionID,
+		&i.RunID,
+		&i.RunStatus,
+		&i.ObservedAt,
+		&i.ExecutionStartedAt,
+		&i.FinishedAt,
+		&i.RunErrorCode,
+		&i.SyncErrorCode,
+	)
+	return i, err
+}
+
 const latestCompletion = `-- name: LatestCompletion :one
 SELECT COALESCE(finished_at,completed_at)::timestamptz AS boundary FROM schedule_occurrences
 WHERE schedule_id=$1 AND state IN ('accepted','failed') AND completed_at IS NOT NULL
