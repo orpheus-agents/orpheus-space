@@ -52,6 +52,10 @@ filters use OR semantics; when acting for a user, select only the request author
 `--unowned` is available for administrative use and is outside this skill's
 owner-scoped conversational workflow.
 
+Schedule objects returned by get, list, create, update, pause, resume and
+reset-session include `url`: the absolute web card link, or null if the server
+has no public URL configured. Use this field rather than the API endpoint.
+
 stdout contains JSON (compact with `--json`, indented otherwise); stderr contains
 JSON errors. Exit codes are 0 for success and 1 for failure. DELETE returns
 `{"ok":true}`. Error diagnostics include the HTTP status and a known error code,

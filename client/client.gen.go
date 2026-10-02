@@ -270,6 +270,9 @@ type Schedule struct {
 	Status         Status                                `json:"status"`
 	Timezone       string                                `json:"timezone"`
 	UpdatedAt      time.Time                             `json:"updated_at"`
+
+	// URL Absolute Space Web card URL from ORPHEUS_PUBLIC_URL, or null when not configured. Computed at response time.
+	URL nullable.Nullable[string] `json:"url"`
 }
 
 // SchedulePage defines model for SchedulePage.

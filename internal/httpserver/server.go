@@ -46,6 +46,21 @@ func response[T any](source any) (T, error) {
 	err = json.Unmarshal(raw, &out)
 	return out, err
 }
+
+// scheduleView adds deployment-specific links without persisting them in snapshots.
+type scheduleView struct {
+	schedule.Schedule
+	URL *string `json:"url"`
+}
+
+func (s *Server) scheduleView(task schedule.Schedule) scheduleView {
+	view := scheduleView{Schedule: task}
+	if s.Config.Auth.PublicURL != "" {
+		view.URL = new(s.Config.Auth.PublicURL + "/schedules/" + task.ID.String())
+	}
+	return view
+}
+
 func (s *Server) CreateSchedule(ctx context.Context, r api.CreateScheduleRequestObject) (api.CreateScheduleResponseObject, error) {
 	if r.Body == nil {
 		return nil, schedule.Invalid("body")
@@ -62,21 +77,28 @@ func (s *Server) CreateSchedule(ctx context.Context, r api.CreateScheduleRequest
 	if err != nil {
 		return nil, err
 	}
-	return response[api.CreateSchedule201JSONResponse](out)
+	return response[api.CreateSchedule201JSONResponse](s.scheduleView(out))
 }
 func (s *Server) GetSchedule(ctx context.Context, r api.GetScheduleRequestObject) (api.GetScheduleResponseObject, error) {
 	out, err := s.Store.Get(ctx, r.ID)
 	if err != nil {
 		return nil, err
 	}
-	return response[api.GetSchedule200JSONResponse](out)
+	return response[api.GetSchedule200JSONResponse](s.scheduleView(out))
 }
 func (s *Server) ListSchedules(ctx context.Context, r api.ListSchedulesRequestObject) (api.ListSchedulesResponseObject, error) {
 	out, err := s.Store.List(ctx, store.Filter{Owners: value(r.Params.OwnerEmail, []string{}), Unowned: value(r.Params.Unowned, false), Status: string(value(r.Params.Status, ""))}, value(r.Params.Limit, 50), value(r.Params.Cursor, ""))
 	if err != nil {
 		return nil, err
 	}
-	return response[api.ListSchedules200JSONResponse](out)
+	items := make([]scheduleView, 0, len(out.Items))
+	for _, task := range out.Items {
+		items = append(items, s.scheduleView(task))
+	}
+	return response[api.ListSchedules200JSONResponse](struct {
+		Items      []scheduleView `json:"items"`
+		NextCursor *string        `json:"next_cursor"`
+	}{items, out.NextCursor})
 }
 func (s *Server) UpdateSchedule(ctx context.Context, r api.UpdateScheduleRequestObject) (api.UpdateScheduleResponseObject, error) {
 	if r.Body == nil {
@@ -90,7 +112,7 @@ func (s *Server) UpdateSchedule(ctx context.Context, r api.UpdateScheduleRequest
 	if err != nil {
 		return nil, err
 	}
-	return response[api.UpdateSchedule200JSONResponse](out)
+	return response[api.UpdateSchedule200JSONResponse](s.scheduleView(out))
 }
 func (s *Server) DeleteSchedule(ctx context.Context, r api.DeleteScheduleRequestObject) (api.DeleteScheduleResponseObject, error) {
 	if err := s.Store.Delete(ctx, r.ID); err != nil {
@@ -140,7 +162,7 @@ func (s *Server) ResetSession(ctx context.Context, r api.ResetSessionRequestObje
 	if err != nil {
 		return nil, err
 	}
-	return response[api.ResetSession200JSONResponse](out)
+	return response[api.ResetSession200JSONResponse](s.scheduleView(out))
 }
 func (s *Server) GetOccurrenceResult(ctx context.Context, r api.GetOccurrenceResultRequestObject) (api.GetOccurrenceResultResponseObject, error) {
 	occ, err := s.Store.Occurrence(ctx, r.ID, r.OccurrenceID)

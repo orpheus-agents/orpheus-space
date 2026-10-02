@@ -189,3 +189,24 @@ func TestHelpDoesNotEchoHostCredentials(t *testing.T) {
 		t.Fatal("help disclosed configuration")
 	}
 }
+
+func TestScheduleURLPassthrough(t *testing.T) {
+	id := uuid.NewString()
+	for _, link := range []string{`"https://public.example.com/schedules/` + id + `"`, `null`} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"id":"`+id+`","url":`+link+`}`)
+		}))
+		for _, compact := range []bool{false, true} {
+			args := []string{"schedule", "get", id}
+			if compact {
+				args = append(args, "--json")
+			}
+			code, out, errout := invoke(t, server.URL, "test-key", "", args...)
+			var result map[string]json.RawMessage
+			if code != 0 || errout != "" || json.Unmarshal([]byte(out), &result) != nil || string(result["url"]) != link {
+				t.Fatal(code, out, errout)
+			}
+		}
+		server.Close()
+	}
+}
