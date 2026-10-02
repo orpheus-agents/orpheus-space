@@ -111,7 +111,23 @@ If the core data is permanently lost, operator investigation is required; there
 is no automatic failure or force-reset API.
 
 Agent message front matter renders `scheduled_at` and `dispatched_at` in the
-schedule's timezone with the applicable UTC offset. Metadata retains UTC times.
+schedule's timezone with the applicable UTC offset. `last_successful_run` contains
+`scheduled_at`, `execution_started_at` (when known), and `finished_at` of the
+most recent earlier run with status `completed` for this schedule. It is omitted
+until the first success. Failed, cancelled, or skipped occurrences do not advance
+it; resetting the reusable session does not clear schedule history. Metadata
+contains the same previous-run timestamps in UTC. These times help the agent
+choose a reporting period, but do not assert which data the previous run processed.
+
+```yaml
+last_successful_run:
+    scheduled_at: 2026-10-02T09:00:00+03:00
+    execution_started_at: 2026-10-02T09:00:02+03:00
+    finished_at: 2026-10-02T09:02:10+03:00
+```
+
+The previous success is read when preparing the request and saved with it.
+Retries preserve these timestamps even if stored history later changes.
 
 Before dispatch, Space persists the exact request bytes, path and idempotency key.
 Retries and restarts reuse them. Pause/delete cancels pending work; dispatching

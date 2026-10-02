@@ -4,9 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"slices"
 	"time"
+
+	"github.com/google/uuid"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/orpheus-agents/orpheus-space/internal/config"
 	"github.com/orpheus-agents/orpheus-space/internal/schedule"
@@ -15,8 +17,32 @@ import (
 	coreapi "github.com/orpheus-agents/orpheus/client"
 )
 
+type messageFrontMatter struct {
+	ScheduleID        uuid.UUID           `json:"schedule_id" yaml:"schedule_id"`
+	OccurrenceID      uuid.UUID           `json:"occurrence_id" yaml:"occurrence_id"`
+	ScheduledAt       time.Time           `json:"scheduled_at" yaml:"scheduled_at"`
+	DispatchedAt      time.Time           `json:"-" yaml:"dispatched_at"`
+	Timezone          string              `json:"timezone" yaml:"timezone"`
+	LastSuccessfulRun *successfulRunTimes `json:"last_successful_run,omitzero" yaml:"last_successful_run,omitempty"`
+}
+
+// successfulRunTimes describes a previous completed run, not a data coverage guarantee.
+type successfulRunTimes struct {
+	ScheduledAt        time.Time  `json:"scheduled_at" yaml:"scheduled_at"`
+	ExecutionStartedAt *time.Time `json:"execution_started_at,omitzero" yaml:"execution_started_at,omitempty"`
+	FinishedAt         time.Time  `json:"finished_at" yaml:"finished_at"`
+}
+
+func successTimes(occ *db.ScheduleOccurrence, location *time.Location) successfulRunTimes {
+	result := successfulRunTimes{ScheduledAt: occ.ScheduledAt.In(location), FinishedAt: occ.FinishedAt.In(location)}
+	if occ.ExecutionStartedAt != nil {
+		result.ExecutionStartedAt = new(occ.ExecutionStartedAt.In(location))
+	}
+	return result
+}
+
 func Builder(cfg config.Config) store.BuildSnapshot {
-	return func(row db.Schedule, occ db.ScheduleOccurrence, now time.Time) (store.Snapshot, error) {
+	return func(row db.Schedule, occ db.ScheduleOccurrence, lastSuccess *db.ScheduleOccurrence, now time.Time) (store.Snapshot, error) {
 		location, err := time.LoadLocation(row.Timezone)
 		if err != nil {
 			return store.Snapshot{}, schedule.Invalid("timezone")
@@ -34,8 +60,27 @@ func Builder(cfg config.Config) store.BuildSnapshot {
 		}{configuration, row.SessionMode})
 		hash := sha256.Sum256(fingerprintInput)
 		fingerprint := hex.EncodeToString(hash[:])
-		metadata, _ := json.Marshal(map[string]any{"schedule_id": row.ID, "occurrence_id": occ.ID, "scheduled_at": occ.ScheduledAt.UTC(), "timezone": row.Timezone})
-		text := fmt.Sprintf("---\nschedule_id: %s\noccurrence_id: %s\nscheduled_at: %s\ndispatched_at: %s\ntimezone: %s\n---\n\n%s", row.ID, occ.ID, occ.ScheduledAt.In(location).Format(time.RFC3339), now.In(location).Format(time.RFC3339), row.Timezone, row.Prompt)
+		fields := messageFrontMatter{
+			ScheduleID: row.ID, OccurrenceID: occ.ID,
+			ScheduledAt: occ.ScheduledAt.In(location), DispatchedAt: now.In(location),
+			Timezone: row.Timezone,
+		}
+		if lastSuccess != nil {
+			fields.LastSuccessfulRun = new(successTimes(lastSuccess, location))
+		}
+		frontMatter, err := yaml.Marshal(fields)
+		if err != nil {
+			return store.Snapshot{}, err
+		}
+		text := "---\n" + string(frontMatter) + "---\n\n" + row.Prompt
+		fields.ScheduledAt = occ.ScheduledAt.UTC()
+		if lastSuccess != nil {
+			fields.LastSuccessfulRun = new(successTimes(lastSuccess, time.UTC))
+		}
+		metadata, err := json.Marshal(fields)
+		if err != nil {
+			return store.Snapshot{}, err
+		}
 		messages := []coreapi.TextMessage{{Text: text, Metadata: new(json.RawMessage(metadata))}}
 		snapshot := store.Snapshot{Path: "/api/v1/sessions", Fingerprint: fingerprint, Reusable: row.SessionMode == "reuse"}
 		var body any = coreapi.CreateSession{AllowMultipleRuns: &snapshot.Reusable, Configuration: configuration, Namespace: new("schedule"), ExternalKey: new(row.ID.String()), Messages: messages}
