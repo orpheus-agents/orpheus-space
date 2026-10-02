@@ -665,12 +665,16 @@ components:
           type: object
           nullable: true
           additionalProperties: false
-          required: [subject, display_name]
+          required: [subject, display_name, email]
           properties:
             subject:
               type: string
             display_name:
               type: string
+            email:
+              type: string
+              nullable: true
+              description: Normalized email from the SAML identity, or null when unavailable.
         expires_at:
           type: string
           format: date-time

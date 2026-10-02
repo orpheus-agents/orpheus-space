@@ -370,10 +370,11 @@ func TestSAMLDisplayNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct{ name, friendly, value, want string }{
-		{"preferred_username", "", "operator", "operator"},
-		{"urn:oid:1.2.840.113549.1.9.1", "email", "operator@example.test", "operator@example.test"},
-		{"unknown", "", "ignored", "fixture-subject"},
+	for _, tc := range []struct{ name, friendly, value, want, email string }{
+		{"preferred_username", "", "operator", "operator", ""},
+		{"urn:oid:1.2.840.113549.1.9.1", "email", "operator@example.test", "operator@example.test", "operator@example.test"},
+		{"email", "", " OPERATOR@example.test ", " OPERATOR@example.test ", "operator@example.test"},
+		{"unknown", "", "ignored", "fixture-subject", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			login := beginLogin(t, s, pool)
@@ -396,6 +397,17 @@ func TestSAMLDisplayNames(t *testing.T) {
 			identity, err := s.Authenticate(r)
 			if err != nil || identity.DisplayName != tc.want {
 				t.Fatal(identity, err)
+			}
+			state, err := s.State(httptest.NewRecorder(), r)
+			if err != nil || state.User == nil {
+				t.Fatal(state, err)
+			}
+			if tc.email == "" {
+				if state.User.Email != nil {
+					t.Fatal("email must be absent", state.User.Email)
+				}
+			} else if state.User.Email == nil || *state.User.Email != tc.email {
+				t.Fatal("stored email was not returned", state.User.Email)
 			}
 		})
 	}

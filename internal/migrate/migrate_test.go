@@ -91,3 +91,32 @@ func TestReadinessRequiresAllMigrations(t *testing.T) {
 		t.Fatal("ready without database")
 	}
 }
+
+func TestBrowserEmailMigrationPreservesSessions(t *testing.T) {
+	pool := testutil.Database(t)
+	db := stdlib.OpenDBFromPool(pool)
+	defer func() { _ = db.Close() }()
+	p, err := migrate.Provider(db, "../../migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.DownTo(t.Context(), 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(t.Context(), `INSERT INTO browser_sessions (token_hash, subject, display_name, expires_at)
+		VALUES (decode(repeat('01', 32), 'hex'), 'existing', 'Existing user', now() + interval '1 hour')`); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err = p.Up(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		var email *string
+		if err = pool.QueryRow(t.Context(), "SELECT email FROM browser_sessions WHERE subject='existing'").Scan(&email); err != nil || email != nil {
+			t.Fatal("existing session must survive with no inferred email", email, err)
+		}
+		if _, err = p.DownTo(t.Context(), 3); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

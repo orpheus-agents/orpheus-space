@@ -26,6 +26,7 @@ type BrowserSession struct {
 	DisplayName string    `json:"display_name"`
 	CreatedAt   time.Time `json:"created_at"`
 	ExpiresAt   time.Time `json:"expires_at"`
+	Email       *string   `json:"email"`
 }
 
 type Schedule struct {

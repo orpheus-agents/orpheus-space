@@ -99,7 +99,7 @@ func (q *Queries) GetBrowserLogin(ctx context.Context, arg GetBrowserLoginParams
 }
 
 const getBrowserSession = `-- name: GetBrowserSession :one
-SELECT token_hash, subject, display_name, created_at, expires_at FROM browser_sessions WHERE token_hash = $1 AND expires_at > clock_timestamp()
+SELECT token_hash, subject, display_name, created_at, expires_at, email FROM browser_sessions WHERE token_hash = $1 AND expires_at > clock_timestamp()
 `
 
 func (q *Queries) GetBrowserSession(ctx context.Context, tokenHash []byte) (BrowserSession, error) {
@@ -111,6 +111,7 @@ func (q *Queries) GetBrowserSession(ctx context.Context, tokenHash []byte) (Brow
 		&i.DisplayName,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.Email,
 	)
 	return i, err
 }
@@ -142,8 +143,8 @@ func (q *Queries) InsertBrowserLogin(ctx context.Context, arg InsertBrowserLogin
 }
 
 const insertBrowserSession = `-- name: InsertBrowserSession :exec
-INSERT INTO browser_sessions (token_hash, subject, display_name, expires_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO browser_sessions (token_hash, subject, display_name, expires_at, email)
+VALUES ($1, $2, $3, $4, $5)
 `
 
 type InsertBrowserSessionParams struct {
@@ -151,6 +152,7 @@ type InsertBrowserSessionParams struct {
 	Subject     string    `json:"subject"`
 	DisplayName string    `json:"display_name"`
 	ExpiresAt   time.Time `json:"expires_at"`
+	Email       *string   `json:"email"`
 }
 
 func (q *Queries) InsertBrowserSession(ctx context.Context, arg InsertBrowserSessionParams) error {
@@ -159,6 +161,7 @@ func (q *Queries) InsertBrowserSession(ctx context.Context, arg InsertBrowserSes
 		arg.Subject,
 		arg.DisplayName,
 		arg.ExpiresAt,
+		arg.Email,
 	)
 	return err
 }

@@ -12,8 +12,8 @@ WHERE id = $1 AND browser_nonce_hash = $2 AND expires_at > clock_timestamp()
 RETURNING *;
 
 -- name: InsertBrowserSession :exec
-INSERT INTO browser_sessions (token_hash, subject, display_name, expires_at)
-VALUES ($1, $2, $3, $4);
+INSERT INTO browser_sessions (token_hash, subject, display_name, expires_at, email)
+VALUES ($1, $2, $3, $4, $5);
 
 -- name: GetBrowserSession :one
 SELECT * FROM browser_sessions WHERE token_hash = $1 AND expires_at > clock_timestamp();
