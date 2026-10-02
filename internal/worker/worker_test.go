@@ -116,7 +116,7 @@ func fixture(t *testing.T) (*Worker, *coreFixture, *time.Time, schedule.Schedule
 	cfg.Execution.Sandbox.Template = "sandbox"
 	cfg.Execution.Sandbox.EnvFrom = []string{"A"}
 	cfg.Execution.Limits.RunTimeoutSeconds = 3600
-	storage := &store.Store{Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv, Now: func() time.Time { return *now }}
+	storage := &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv, Now: func() time.Time { return *now }}
 	f := &coreFixture{accepted: map[string]coreapi.Accepted{}, runs: map[uuid.UUID]coreapi.Run{}}
 	server := httptest.NewServer(f)
 	t.Cleanup(server.Close)
@@ -229,7 +229,7 @@ func TestLostResponseRestartAndPause(t *testing.T) {
 	if rows := history(t, w, task.ID); len(rows) != 1 || rows[0].State != "dispatching" {
 		t.Fatal(rows)
 	}
-	if _, err := w.Store.Update(t.Context(), task.ID, []byte(`{"status":"paused","prompt":"new prompt","model":"new"}`)); err != nil {
+	if _, err := w.Store.Update(t.Context(), task.ID, []byte(`{"status":"paused","prompt":"new prompt","model":"new","profile":"other","template":"other"}`)); err != nil {
 		t.Fatal(err)
 	}
 	replacement := *w
@@ -311,7 +311,7 @@ func TestDispatchFailures(t *testing.T) {
 		status int
 		lost   bool
 		state  string
-	}{{"capacity_exhausted", 503, false, "dispatching"}, {"validation_error", 422, false, "failed"}, {"token_limit_exceeded", 409, false, "failed"}, {"session_unavailable", 409, false, "failed"}, {"unauthorized", 401, true, "dispatching"}, {"idempotency_conflict", 409, false, "dispatching"}} {
+	}{{"unknown_profile", 422, false, "failed"}, {"unknown_template", 422, false, "failed"}, {"capacity_exhausted", 503, false, "dispatching"}, {"validation_error", 422, false, "failed"}, {"token_limit_exceeded", 409, false, "failed"}, {"session_unavailable", 409, false, "failed"}, {"unauthorized", 401, true, "dispatching"}, {"idempotency_conflict", 409, false, "dispatching"}} {
 		t.Run(tc.code, func(t *testing.T) {
 			w, f, now, task := fixture(t)
 			*now = now.Add(time.Minute)
@@ -382,7 +382,7 @@ func TestSnapshotFingerprintAndNewMode(t *testing.T) {
 	cfg.Execution.Agent.Profile = "default"
 	cfg.Execution.Sandbox.Template = "template"
 	cfg.Execution.Sandbox.EnvFrom = []string{"A"}
-	row := db.Schedule{ID: uuid.New(), Prompt: "first", Timezone: "UTC", SessionMode: "reuse", EnvFrom: []string{"A", "B"}}
+	row := db.Schedule{Profile: "default", Template: "template", ID: uuid.New(), Prompt: "first", Timezone: "UTC", SessionMode: "reuse", EnvFrom: []string{"A", "B"}}
 	occ := db.ScheduleOccurrence{ID: uuid.New(), ScheduledAt: time.Now()}
 	now := time.Now()
 	first, err := Builder(cfg)(row, occ, nil, now)

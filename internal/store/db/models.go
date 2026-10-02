@@ -48,6 +48,8 @@ type Schedule struct {
 	DeletedAt           *time.Time `json:"deleted_at"`
 	ReusableSessionID   *uuid.UUID `json:"reusable_session_id"`
 	ReusableFingerprint *string    `json:"reusable_fingerprint"`
+	Profile             string     `json:"profile"`
+	Template            string     `json:"template"`
 }
 
 type ScheduleCreateKey struct {

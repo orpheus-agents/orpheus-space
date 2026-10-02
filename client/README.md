@@ -18,5 +18,11 @@ Optional nullable fields distinguish omitted, null and concrete values through
 field. To leave it unchanged, leave the field unset. Persist one Idempotency-Key
 per create attempt and reuse it on transport retries.
 
+Use `GetProfilesWithResponse` and `GetTemplatesWithResponse` for the available
+choices, descriptions and `is_default`. On creation, omitted `Profile` / `Template`
+use the configured defaults; on PATCH omission keeps the stored choice. Set a
+nonempty name to choose explicitly. Unlike model/owner, these fields cannot be null.
+Catalog reads and changed selections require Orpheus availability.
+
 `make generate-client-check`, `make test-client` and `make build-client` validate
 the package without starting a database. Generated files must not be edited by hand.

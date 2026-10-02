@@ -33,10 +33,10 @@ const createBody = `{"name":"Report","prompt":"Summarize incidents","cron":"0 10
 
 func fixture(t *testing.T, mode string) http.Handler {
 	t.Helper()
-	cfg := config.Config{Auth: config.BrowserAuth{Mode: mode, PublicURL: "http://space.test"}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A", "B"}, MaxRequestBytes: 4096}
+	cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: mode, PublicURL: "http://space.test"}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A", "B"}, MaxRequestBytes: 4096}
 	cfg.Execution.Sandbox.EnvFrom = []string{"A"}
-	s := &store.Store{Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv}
-	h, err := Handler(&Server{Store: s, Config: cfg, Now: func() time.Time { return time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) }})
+	s := &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv}
+	h, err := Handler(&Server{Core: testutil.Catalog{}, Store: s, Config: cfg, Now: func() time.Time { return time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,8 +190,8 @@ func TestInvalidInputsDoNotReachStorage(t *testing.T) {
 func TestUnavailableDatabaseDoesNotAffectPreview(t *testing.T) {
 	pool := testutil.Database(t)
 	pool.Close()
-	cfg := config.Config{Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
-	h, err := Handler(&Server{Store: &store.Store{Pool: pool}, Config: cfg})
+	cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
+	h, err := Handler(&Server{Store: &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: pool}, Config: cfg})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,6 +240,7 @@ func TestValidationDetails(t *testing.T) {
 }
 
 type resultCore struct {
+	testutil.Catalog
 	calls int
 	run   coreapi.Run
 	err   error
@@ -255,7 +256,7 @@ func (c *resultCore) Run(_ context.Context, sid, rid uuid.UUID) (coreapi.Run, er
 func TestHistoryAndExplicitResult(t *testing.T) {
 	pool := testutil.Database(t)
 	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	storage := &store.Store{Pool: pool, Now: func() time.Time { return now }}
+	storage := &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: pool, Now: func() time.Time { return now }}
 	in := schedule.Defaults()
 	in.Name = "task"
 	in.Prompt = "prompt"
@@ -274,7 +275,7 @@ func TestHistoryAndExplicitResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	occ := history.Items[0]
-	cfg := config.Config{Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
+	cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
 	c := &resultCore{run: coreapi.Run{ID: uuid.New(), SessionID: uuid.New(), Status: coreapi.RunStatusCompleted, FinalMessage: &coreapi.Message{ID: uuid.New(), Text: "sensitive result", CreatedAt: now}}}
 	handler, err := Handler(&Server{Store: storage, Config: cfg, Core: c})
 	if err != nil {
@@ -324,8 +325,8 @@ func TestHistoryAndExplicitResult(t *testing.T) {
 func TestScheduleURLs(t *testing.T) {
 	for _, origin := range []string{"https://space.example.com", "http://localhost:8080", "http://[::1]:8080", ""} {
 		t.Run(origin, func(t *testing.T) {
-			cfg := config.Config{Auth: config.BrowserAuth{Mode: "api_only", PublicURL: origin}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: 4096}
-			s := &Server{Store: &store.Store{Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv}, Config: cfg}
+			cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: "api_only", PublicURL: origin}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: 4096}
+			s := &Server{Core: testutil.Catalog{}, Store: &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv}, Config: cfg}
 			h, err := Handler(s)
 			if err != nil {
 				t.Fatal(err)

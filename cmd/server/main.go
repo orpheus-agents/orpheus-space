@@ -115,7 +115,6 @@ func serve(ctx context.Context, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	storage := &store.Store{Pool: pool, AllowedEnv: cfg.AllowedEnv}
 	var coreClient httpserver.CoreReader
 	if cfg.CoreURL != "" {
 		client, err := core.New(cfg.CoreURL, cfg.CoreAPIKey)
@@ -124,6 +123,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 		}
 		coreClient = client
 	}
+	storage := &store.Store{Pool: pool, AllowedEnv: cfg.AllowedEnv, DefaultProfile: cfg.Execution.Agent.Profile, DefaultTemplate: cfg.Execution.Sandbox.Template, Catalog: coreClient}
 	handler, err := httpserver.Handler(&httpserver.Server{Store: storage, Config: cfg, Core: coreClient})
 	if err != nil {
 		return err

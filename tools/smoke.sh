@@ -22,7 +22,7 @@ ORPHEUS_BASE_URL=http://unused-core:8000
 ORPHEUS_API_KEY=fixture-core-key
 ENV
 [ "$(docker image inspect -f '{{.Config.User}}' orpheus-space:local)" = '65532:65532' ]
-docker run --rm --network "$smoke_network" --env-file "$smoke_tmp/app.env" orpheus-space:local migrate up
+docker run --rm --network "$smoke_network" --env-file "$smoke_tmp/app.env" -v "$smoke_tmp/space.toml:/etc/space/space.toml:ro" orpheus-space:local migrate up
 for smoke_command in serve worker; do
 docker run -d --name "$smoke_prefix" --network "$smoke_network" --read-only --cap-drop ALL --security-opt no-new-privileges --env-file "$smoke_tmp/app.env" -v "$smoke_tmp/space.toml:/etc/space/space.toml:ro" orpheus-space:local "$smoke_command" >/dev/null
 smoke_attempt=0

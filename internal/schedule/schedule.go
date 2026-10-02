@@ -26,6 +26,9 @@ type Input struct {
 	SessionMode string   `json:"session_mode"`
 	OwnerEmail  *string  `json:"owner_email"`
 	EnvFrom     []string `json:"env_from"`
+	// Omitted selections stay out of the create fingerprint, including legacy keys.
+	Profile  string `json:"profile,omitempty"`
+	Template string `json:"template,omitempty"`
 }
 type Schedule struct {
 	Input
@@ -159,7 +162,7 @@ func Patch(current Input, raw []byte) (Input, error) {
 	for field, value := range fields {
 		switch field {
 		case "model", "owner_email":
-		case "name", "prompt", "cron", "timezone", "status", "session_mode", "env_from":
+		case "name", "prompt", "cron", "timezone", "status", "session_mode", "env_from", "profile", "template":
 			if string(value) == "null" {
 				return current, Invalid(field)
 			}

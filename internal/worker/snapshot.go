@@ -53,7 +53,7 @@ func Builder(cfg config.Config) store.BuildSnapshot {
 		if _, err := schedule.EnvNames(env, cfg.AllowedEnv); err != nil {
 			return store.Snapshot{}, err
 		}
-		configuration := coreapi.ConfigurationInput{Agent: coreapi.AgentInput{Profile: cfg.Execution.Agent.Profile, Model: row.Model, Instructions: cfg.Execution.Agent.Instructions}, Sandbox: coreapi.SandboxInput{Template: cfg.Execution.Sandbox.Template, EnvFrom: &env}, Limits: &coreapi.LimitsInput{RunTimeoutSeconds: new(cfg.Execution.Limits.RunTimeoutSeconds), MaxSessionTokens: cfg.Execution.Limits.MaxSessionTokens}}
+		configuration := coreapi.ConfigurationInput{Agent: coreapi.AgentInput{Profile: row.Profile, Model: row.Model, Instructions: cfg.Execution.Agent.Instructions}, Sandbox: coreapi.SandboxInput{Template: row.Template, EnvFrom: &env}, Limits: &coreapi.LimitsInput{RunTimeoutSeconds: new(cfg.Execution.Limits.RunTimeoutSeconds), MaxSessionTokens: cfg.Execution.Limits.MaxSessionTokens}}
 		fingerprintInput, _ := json.Marshal(struct {
 			Configuration coreapi.ConfigurationInput
 			Mode          string

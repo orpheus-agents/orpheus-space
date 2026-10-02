@@ -1,6 +1,6 @@
 -- name: CreateSchedule :one
-INSERT INTO schedules (id,name,prompt,cron,timezone,status,model,session_mode,owner_email,env_from,created_at,updated_at,next_run_at,cron_started_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12,$11) RETURNING *;
+INSERT INTO schedules (id,name,prompt,cron,timezone,status,model,session_mode,owner_email,env_from,created_at,updated_at,next_run_at,cron_started_at,profile,template)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12,$11,$13,$14) RETURNING *;
 
 -- name: GetSchedule :one
 SELECT * FROM schedules WHERE id=$1;
@@ -9,7 +9,7 @@ SELECT * FROM schedules WHERE id=$1;
 SELECT * FROM schedules WHERE id=$1 FOR UPDATE;
 
 -- name: UpdateSchedule :one
-UPDATE schedules SET name=$2,prompt=$3,cron=$4,timezone=$5,status=$6,model=$7,session_mode=$8,owner_email=$9,env_from=$10,updated_at=$11,next_run_at=$12,cron_started_at=$13
+UPDATE schedules SET name=$2,prompt=$3,cron=$4,timezone=$5,status=$6,model=$7,session_mode=$8,owner_email=$9,env_from=$10,updated_at=$11,next_run_at=$12,cron_started_at=$13,profile=$14,template=$15
 WHERE id=$1 RETURNING *;
 
 -- name: DeleteSchedule :exec

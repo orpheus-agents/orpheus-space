@@ -17,8 +17,8 @@ import (
 )
 
 func TestCLIWithSpaceAPI(t *testing.T) {
-	cfg := config.Config{Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: maxBody}
-	h, err := httpserver.Handler(&httpserver.Server{Config: cfg, Store: &store.Store{Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv}})
+	cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: maxBody}
+	h, err := httpserver.Handler(&httpserver.Server{Core: testutil.Catalog{}, Config: cfg, Store: &store.Store{Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv, DefaultProfile: cfg.Execution.Agent.Profile, DefaultTemplate: cfg.Execution.Sandbox.Template, Catalog: testutil.Catalog{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,6 +64,16 @@ func TestCLIWithSpaceAPI(t *testing.T) {
 	run("", "reset-session", id)
 	run("", "history", id)
 	run("", "settings")
+	for _, command := range []string{"profiles", "templates"} {
+		raw = run("", command)
+		if !strings.Contains(raw, `"is_default":true`) {
+			t.Fatal(raw)
+		}
+	}
+	raw = run(`{"profile":"other","template":"other"}`, "update", id, "--file", "-")
+	if !strings.Contains(raw, `"profile":"other"`) || !strings.Contains(raw, `"template":"other"`) {
+		t.Fatal(raw)
+	}
 	run("", "preview", "--cron", "0 10 * * *", "--timezone", "Europe/Moscow")
 	code, out, errout := invoke(t, server.URL, "test-key", "", "schedule", "result", id, uuid.NewString(), "--json")
 	if code != 1 || out != "" || !strings.Contains(errout, "occurrence_not_found") {
