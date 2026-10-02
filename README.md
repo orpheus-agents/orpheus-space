@@ -159,7 +159,12 @@ client identity, database records and cookies remain separate.
 `worker` does not read SAML files or require these settings.
 
 `GET /api/v1/auth/session` reports mode, authenticated/read/write access, nullable
-subject/display name and expiry. `/auth/login?next=/schedules` starts login;
+user (subject, display name and email) and expiry. Email is normalized using the
+same rules as schedule ownership. Configure an IdP attribute whose Name or
+FriendlyName is `email` (in Keycloak, a User Property mapper from `email` to SAML
+attribute `email`). An email-format NameID is also accepted. Missing or invalid
+email stays null, without preventing login. Existing browser sessions acquire
+email on the next SAML login. `/auth/login?next=/schedules` starts login;
 `next` must be a local path. `POST /auth/logout` requires Origin/CSRF and revokes
 only Space's local session. It does not sign out of Keycloak or core. The
 `__Host-orpheus_space_session` cookie is Secure, HttpOnly, SameSite=Lax, Path=/,

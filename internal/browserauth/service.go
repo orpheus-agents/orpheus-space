@@ -48,6 +48,7 @@ type Identity struct {
 	Subject     string
 	TokenHash   []byte
 	DisplayName string
+	Email       *string
 	ExpiresAt   time.Time
 }
 
@@ -60,8 +61,9 @@ type State struct {
 	ExpiresAt     *time.Time `json:"expires_at"`
 }
 type User struct {
-	Subject     string `json:"subject"`
-	DisplayName string `json:"display_name"`
+	Subject     string  `json:"subject"`
+	DisplayName string  `json:"display_name"`
+	Email       *string `json:"email"`
 }
 
 func New(c config.BrowserAuth, pool *pgxpool.Pool) (*Service, error) {
@@ -207,7 +209,7 @@ func (s *Service) Identity(ctx context.Context, hash []byte) (*Identity, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &Identity{TokenHash: row.TokenHash, Subject: row.Subject, DisplayName: row.DisplayName, ExpiresAt: row.ExpiresAt}, nil
+	return &Identity{TokenHash: row.TokenHash, Subject: row.Subject, DisplayName: row.DisplayName, Email: row.Email, ExpiresAt: row.ExpiresAt}, nil
 }
 func (s *Service) Authenticate(r *http.Request) (*Identity, error) {
 	return s.Identity(r.Context(), requestHash(r, CookieName))
@@ -227,7 +229,7 @@ func (s *Service) State(w http.ResponseWriter, r *http.Request) (State, error) {
 	state.Authenticated = true
 	state.ReadAccess = true
 	state.WriteAccess = true
-	state.User = &User{Subject: identity.Subject, DisplayName: identity.DisplayName}
+	state.User = &User{Subject: identity.Subject, DisplayName: identity.DisplayName, Email: identity.Email}
 	state.ExpiresAt = &identity.ExpiresAt
 	return state, nil
 }
@@ -406,7 +408,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) error {
 	if err := q.DeleteBrowserSession(r.Context(), requestHash(r, CookieName)); err != nil {
 		return err
 	}
-	if err := q.InsertBrowserSession(r.Context(), db.InsertBrowserSessionParams{TokenHash: tokenHash(token), Subject: assertion.Subject.NameID.Value, DisplayName: name, ExpiresAt: expiry}); err != nil {
+	if err := q.InsertBrowserSession(r.Context(), db.InsertBrowserSessionParams{TokenHash: tokenHash(token), Subject: assertion.Subject.NameID.Value, DisplayName: name, Email: assertionEmail(assertion), ExpiresAt: expiry}); err != nil {
 		return err
 	}
 	if err := tx.Commit(r.Context()); err != nil {

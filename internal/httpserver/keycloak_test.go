@@ -102,6 +102,13 @@ func TestKeycloakRoundTrip(t *testing.T) {
 	cert, _ := pem.Decode(mustRead(t, f.Config.CertFile))
 	clientBody, _ := json.Marshal(map[string]any{
 		"clientId": f.Config.EntityID, "enabled": true, "protocol": "saml", "redirectUris": []string{sp.URL + "/auth/callback"},
+		"protocolMappers": []map[string]any{{
+			"name": "email", "protocol": "saml", "protocolMapper": "saml-user-property-mapper",
+			"config": map[string]string{"user.attribute": "email", "attribute.name": "email", "attribute.nameformat": "Basic"},
+		}, {
+			"name": "username", "protocol": "saml", "protocolMapper": "saml-user-property-mapper",
+			"config": map[string]string{"user.attribute": "username", "attribute.name": "preferred_username", "attribute.nameformat": "Basic"},
+		}},
 		"attributes": map[string]string{
 			"saml.assertion.signature": "true", "saml.server.signature": "true", "saml.client.signature": "true",
 			"saml.signature.algorithm": "RSA_SHA256", "saml.signing.certificate": base64.StdEncoding.EncodeToString(cert.Bytes),
@@ -174,7 +181,7 @@ func TestKeycloakRoundTrip(t *testing.T) {
 		var state browserauth.State
 		err = json.NewDecoder(stateResponse.Body).Decode(&state)
 		_ = stateResponse.Body.Close()
-		if err != nil || !state.WriteAccess || state.User == nil || state.User.DisplayName != "operator" || state.User.Subject != "operator" {
+		if err != nil || !state.WriteAccess || state.User == nil || state.User.DisplayName != "operator" || state.User.Subject != "operator" || state.User.Email == nil || *state.User.Email != "operator@example.test" {
 			t.Fatalf("unexpected browser identity: %+v, %v", state, err)
 		}
 	}

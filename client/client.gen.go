@@ -135,7 +135,10 @@ type AuthSession struct {
 	ReadAccess    bool                         `json:"read_access"`
 	User          nullable.Nullable[struct {
 		DisplayName string `json:"display_name"`
-		Subject     string `json:"subject"`
+
+		// Email Normalized email from the SAML identity, or null when unavailable.
+		Email   nullable.Nullable[string] `json:"email"`
+		Subject string                    `json:"subject"`
 	}] `json:"user"`
 	WriteAccess bool `json:"write_access"`
 }
