@@ -123,7 +123,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 		}
 		coreClient = client
 	}
-	storage := &store.Store{Pool: pool, AllowedEnv: cfg.AllowedEnv, DefaultProfile: cfg.Execution.Agent.Profile, DefaultTemplate: cfg.Execution.Sandbox.Template, Catalog: coreClient}
+	storage := &store.Store{Pool: pool, DefaultProfile: cfg.Execution.Agent.Profile, DefaultTemplate: cfg.Execution.Sandbox.Template, Catalog: coreClient}
 	handler, err := httpserver.Handler(&httpserver.Server{Store: storage, Config: cfg, Core: coreClient})
 	if err != nil {
 		return err
@@ -209,7 +209,7 @@ func runWorker(ctx context.Context, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	w := &worker.Worker{Store: &store.Store{Pool: pool, AllowedEnv: cfg.AllowedEnv}, Core: client, Build: worker.Builder(cfg), Poll: cfg.WorkerPoll}
+	w := &worker.Worker{Store: &store.Store{Pool: pool}, Core: client, Build: worker.Builder(cfg), Poll: cfg.WorkerPoll}
 	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	listener, err := net.Listen("tcp", cfg.SystemAddress)

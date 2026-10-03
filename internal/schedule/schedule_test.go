@@ -51,17 +51,17 @@ func TestCronTimezonesAndDST(t *testing.T) {
 func TestNormalizeAndPatch(t *testing.T) {
 	in := validInput()
 	in.OwnerEmail = new(" Alice@EXAMPLE.com ")
-	in.EnvFrom = []string{"B", "A"}
+	in.Services = []string{"b", "a"}
 	in.Model = new(" model ")
-	got, err := Normalize(in, []string{"A", "B"}, time.Now())
-	if err != nil || *got.OwnerEmail != "alice@example.com" || *got.Model != "model" || !slices.Equal(got.EnvFrom, []string{"A", "B"}) {
+	got, err := Normalize(in, time.Now())
+	if err != nil || *got.OwnerEmail != "alice@example.com" || *got.Model != "model" || !slices.Equal(got.Services, []string{"a", "b"}) {
 		t.Fatalf("%+v %v", got, err)
 	}
-	got, err = Patch(got, []byte(`{"model":null,"owner_email":null,"env_from":[]}`))
-	if err != nil || got.Model != nil || got.OwnerEmail != nil || len(got.EnvFrom) != 0 || got.Prompt != in.Prompt {
+	got, err = Patch(got, []byte(`{"model":null,"owner_email":null,"services":[]}`))
+	if err != nil || got.Model != nil || got.OwnerEmail != nil || len(got.Services) != 0 || got.Prompt != in.Prompt {
 		t.Fatalf("%+v %v", got, err)
 	}
-	for _, raw := range []string{`{"name":null}`, `{"status":null}`, `{"env_from":null}`, `{"id":"fake"}`, `null`, `[]`, `{"prompt":5}`} {
+	for _, raw := range []string{`{"name":null}`, `{"status":null}`, `{"services":null}`, `{"id":"fake"}`, `null`, `[]`, `{"prompt":5}`} {
 		if _, err := Patch(in, []byte(raw)); err == nil {
 			t.Errorf("accepted %s", raw)
 		}
@@ -73,12 +73,12 @@ func TestNormalizeAndPatch(t *testing.T) {
 		{"name", func(i *Input) { i.Name = " " }}, {"prompt", func(i *Input) { i.Prompt = "\n" }}, {"model", func(i *Input) { i.Model = new("") }},
 		{"status", func(i *Input) { i.Status = "deleted" }}, {"session_mode", func(i *Input) { i.SessionMode = "other" }},
 		{"email", func(i *Input) { i.OwnerEmail = new("Alice <alice@example.com>") }}, {"empty email", func(i *Input) { i.OwnerEmail = new("") }},
-		{"unknown env", func(i *Input) { i.EnvFrom = []string{"SECRET"} }}, {"duplicate env", func(i *Input) { i.EnvFrom = []string{"A", "A"} }}, {"bad env", func(i *Input) { i.EnvFrom = []string{"A=B"} }},
+		{"uppercase service", func(i *Input) { i.Services = []string{"SECRET"} }}, {"duplicate service", func(i *Input) { i.Services = []string{"a", "a"} }}, {"bad service", func(i *Input) { i.Services = []string{"A=B"} }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in := validInput()
 			tc.change(&in)
-			_, err := Normalize(in, []string{"A"}, time.Now())
+			_, err := Normalize(in, time.Now())
 			problem, ok := errors.AsType[*Error](err)
 			if !ok || problem.Status != 422 {
 				t.Fatalf("validation %v", err)
@@ -88,13 +88,13 @@ func TestNormalizeAndPatch(t *testing.T) {
 }
 
 func TestPatchDoesNotMutateInput(t *testing.T) {
-	for _, raw := range []string{`{"model":"new","owner_email":"new@example.com","env_from":["C"]}`, `{"model":null,"owner_email":null,"env_from":[]}`, `{"model":"new","env_from":["C",42]}`} {
+	for _, raw := range []string{`{"model":"new","owner_email":"new@example.com","services":["c"]}`, `{"model":null,"owner_email":null,"services":[]}`, `{"model":"new","services":["c",42]}`} {
 		current := validInput()
 		current.Model = new("old")
 		current.OwnerEmail = new("old@example.com")
-		current.EnvFrom = []string{"A", "B"}
+		current.Services = []string{"a", "b"}
 		_, _ = Patch(current, []byte(raw))
-		if *current.Model != "old" || *current.OwnerEmail != "old@example.com" || !slices.Equal(current.EnvFrom, []string{"A", "B"}) {
+		if *current.Model != "old" || *current.OwnerEmail != "old@example.com" || !slices.Equal(current.Services, []string{"a", "b"}) {
 			t.Fatalf("patch mutated original: %+v", current)
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,7 +20,7 @@ import (
 	"github.com/orpheus-agents/orpheus-space/internal/testutil"
 )
 
-func TestSelectionMigrationAndLegacyReplay(t *testing.T) {
+func TestSelectionMigrationPreservesLegacySnapshotAndKey(t *testing.T) {
 	pool := testutil.Database(t)
 	sqlDB := stdlib.OpenDB(*pool.Config().ConnConfig)
 	defer func() { _ = sqlDB.Close() }()
@@ -84,9 +85,20 @@ func TestSelectionMigrationAndLegacyReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &store.Store{Pool: pool, DefaultProfile: "changed", DefaultTemplate: "changed"}
-	replay, err := s.Create(t.Context(), access.Principal{ManageAll: true}, input, &key)
-	if err != nil || replay.ID != id || replay.Profile != "old-profile" || replay.Template != "old-template:v1" {
-		t.Fatal(replay, err)
+	var snapshot []byte
+	var fingerprint string
+	if err = pool.QueryRow(t.Context(), `SELECT response,fingerprint FROM schedule_create_keys WHERE key=$1`, key).Scan(&snapshot, &fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	var savedTask schedule.Schedule
+	if err = json.Unmarshal(snapshot, &savedTask); err != nil || savedTask.ID != id || savedTask.Profile != "old-profile" || savedTask.Template != "old-template:v1" || fingerprint != hex.EncodeToString(hash[:]) {
+		t.Fatal(savedTask, fingerprint, err)
+	}
+	// The services API has a different input contract. Legacy keys are retained,
+	// but changing the request to services requires a new key.
+	_, err = s.Create(t.Context(), access.Principal{ManageAll: true}, input, &key)
+	if problem, ok := errors.AsType[*schedule.Error](err); !ok || problem.Status != 409 {
+		t.Fatal("legacy key was reused for a new input contract", err)
 	}
 	if _, err = p.DownTo(t.Context(), 4); err != nil {
 		t.Fatal(err)

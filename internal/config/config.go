@@ -24,8 +24,7 @@ type Execution struct {
 		InstructionsFile string  `toml:"instructions_file"`
 	} `toml:"agent"`
 	Sandbox struct {
-		Template string   `toml:"template"`
-		EnvFrom  []string `toml:"env_from"`
+		Template string `toml:"template"`
 	} `toml:"sandbox"`
 	Limits struct {
 		RunTimeoutSeconds int    `toml:"run_timeout_seconds"`
@@ -41,7 +40,6 @@ type Config struct {
 	SystemAddress   string
 	Auth            BrowserAuth
 	PublicAPIKeys   []string
-	AllowedEnv      []string
 	MaxRequestBytes int64
 	WorkerPoll      time.Duration
 	Execution       Execution
@@ -102,10 +100,8 @@ func load(browser bool) (Config, error) {
 		}
 		*entry.dest = net.JoinHostPort(env(entry.host, "0.0.0.0"), port)
 	}
-	for name, target := range map[string]*[]string{"PUBLIC_API_KEYS": &c.PublicAPIKeys, "HARNESS_ENV_ALLOWLIST": &c.AllowedEnv} {
-		if err := json.Unmarshal([]byte(env(name, "[]")), target); err != nil || *target == nil {
-			return c, fmt.Errorf("%s must be a JSON array", name)
-		}
+	if err := json.Unmarshal([]byte(env("PUBLIC_API_KEYS", "[]")), &c.PublicAPIKeys); err != nil || c.PublicAPIKeys == nil {
+		return c, errors.New("PUBLIC_API_KEYS must be a JSON array")
 	}
 	for _, key := range c.PublicAPIKeys {
 		if strings.TrimSpace(key) == "" {
@@ -135,11 +131,6 @@ func load(browser bool) (Config, error) {
 		return c, errors.New("MAX_REQUEST_BYTES must be 4096..1048576")
 	}
 	c.MaxRequestBytes = n
-	allowed, err := schedule.EnvNames(c.AllowedEnv, nil)
-	if err != nil {
-		return c, errors.New("invalid HARNESS_ENV_ALLOWLIST")
-	}
-	c.AllowedEnv = allowed
 	file, err := os.Open(FilePath())
 	if err != nil {
 		return c, errors.New("cannot open ORPHEUS_CONFIG_FILE")
@@ -184,11 +175,6 @@ func load(browser bool) (Config, error) {
 		}
 		c.Execution.Agent.Instructions = new(string(raw))
 	}
-	base, err := schedule.EnvNames(c.Execution.Sandbox.EnvFrom, c.AllowedEnv)
-	if err != nil {
-		return c, errors.New("base env_from must contain distinct allowlisted names")
-	}
-	c.Execution.Sandbox.EnvFrom = base
 	slices.Sort(c.PublicAPIKeys)
 	return c, nil
 }

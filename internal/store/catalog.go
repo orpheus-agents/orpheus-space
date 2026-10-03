@@ -11,11 +11,12 @@ import (
 type Catalog interface {
 	Profiles(context.Context) (coreapi.Profiles, error)
 	Templates(context.Context) (coreapi.Templates, error)
+	Services(context.Context) (coreapi.Services, error)
 }
 
 // Empty arguments mean an unchanged selection in PATCH.
-func (s *Store) validateSelection(ctx context.Context, profile, template string) error {
-	if profile == "" && template == "" {
+func (s *Store) validateSelection(ctx context.Context, profile, template string, services []string) error {
+	if profile == "" && template == "" && len(services) == 0 {
 		return nil
 	}
 	unavailable := schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
@@ -38,6 +39,17 @@ func (s *Store) validateSelection(ctx context.Context, profile, template string)
 		}
 		if !slices.ContainsFunc(templates.Items, func(t coreapi.Template) bool { return t.Name == template }) {
 			return schedule.Invalid("template")
+		}
+	}
+	if len(services) > 0 {
+		catalog, err := s.Catalog.Services(ctx)
+		if err != nil {
+			return unavailable
+		}
+		for _, code := range services {
+			if !slices.ContainsFunc(catalog.Items, func(service coreapi.Service) bool { return service.Code == code }) {
+				return schedule.Invalid("services")
+			}
 		}
 	}
 	return nil

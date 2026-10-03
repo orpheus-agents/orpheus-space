@@ -60,7 +60,25 @@ func command(input io.Reader, output io.Writer, getenv func(string) string, vers
 	root.PersistentFlags().Lookup("host").DefValue = "" // Do not echo environment configuration in help.
 	root.PersistentFlags().BoolVar(&o.json, "json", false, "Emit compact JSON (default: indented JSON)")
 	group := &cobra.Command{Use: "schedule", Short: "Manage schedules; key comes from ORPHEUS_SPACE_API_KEY", Long: "Manage schedules through the Space API. Schedule JSON includes url, the public web card link, or null when the server has no public URL configured."}
+	group.Args = cobra.NoArgs
+	group.RunE = func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
 	root.AddCommand(group)
+	for _, name := range []string{"profiles", "templates", "services"} {
+		cmd := &cobra.Command{Use: name, Short: "Read the available catalog from Orpheus through Space", Args: cobra.NoArgs}
+		cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+			return o.call(func(c *api.Client) (*http.Response, error) {
+				switch name {
+				case "profiles":
+					return c.GetProfiles(cmd.Context())
+				case "templates":
+					return c.GetTemplates(cmd.Context())
+				default:
+					return c.GetServices(cmd.Context())
+				}
+			})
+		}
+		root.AddCommand(cmd)
+	}
 	for _, name := range []string{"list", "history"} {
 		var owners []string
 		var unowned bool
@@ -103,20 +121,17 @@ func command(input io.Reader, output io.Writer, getenv func(string) string, vers
 		}
 		group.AddCommand(cmd)
 	}
-	for _, name := range []string{"get", "delete", "pause", "resume", "reset-session", "occurrence", "result", "settings", "profiles", "templates"} {
+	for _, name := range []string{"get", "delete", "pause", "resume", "reset-session", "occurrence", "result", "settings"} {
 		nargs := 1
 		short := "Read or change a schedule in Space's database"
 		use := name + " <id>"
-		if name == "settings" || name == "profiles" || name == "templates" {
+		if name == "settings" {
 			nargs = 0
 			use = name
 		}
 		if name == "occurrence" || name == "result" {
 			nargs = 2
 			use += " <occurrence-id>"
-		}
-		if name == "profiles" || name == "templates" {
-			short = "Read available choices and creation defaults from Orpheus through Space"
 		}
 		if name == "result" {
 			short = "Explicitly read the run result from Orpheus core through Space; requires core availability"
@@ -134,10 +149,6 @@ func command(input io.Reader, output io.Writer, getenv func(string) string, vers
 			return o.call(func(c *api.Client) (*http.Response, error) {
 				ctx := cmd.Context()
 				switch name {
-				case "profiles":
-					return c.GetProfiles(ctx)
-				case "templates":
-					return c.GetTemplates(ctx)
 				case "settings":
 					return c.GetSettings(ctx)
 				case "get":

@@ -17,8 +17,8 @@ import (
 )
 
 func TestCLIWithSpaceAPI(t *testing.T) {
-	cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: maxBody}
-	h, err := httpserver.Handler(&httpserver.Server{Core: testutil.Catalog{}, Config: cfg, Store: &store.Store{Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv, DefaultProfile: cfg.Execution.Agent.Profile, DefaultTemplate: cfg.Execution.Sandbox.Template, Catalog: testutil.Catalog{}}})
+	cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: "api_only"}, PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: maxBody}
+	h, err := httpserver.Handler(&httpserver.Server{Core: testutil.Catalog{}, Config: cfg, Store: &store.Store{Pool: testutil.Database(t), DefaultProfile: cfg.Execution.Agent.Profile, DefaultTemplate: cfg.Execution.Sandbox.Template, Catalog: testutil.Catalog{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestCLIWithSpaceAPI(t *testing.T) {
 		}
 		return out
 	}
-	body := `{"name":"Task","prompt":"one\ntwo","cron":"* * * * *","timezone":"Europe/Moscow","owner_email":"alice@example.com","env_from":["A"]}`
+	body := `{"name":"Task","prompt":"one\ntwo","cron":"* * * * *","timezone":"Europe/Moscow","owner_email":"alice@example.com","services":["a"]}`
 	key := uuid.NewString()
 	raw := run(body, "create", "--file", "-", "--idempotency-key", key)
 	if replay := run(body, "create", "--file", "-", "--idempotency-key", key); raw != replay {
@@ -57,16 +57,20 @@ func TestCLIWithSpaceAPI(t *testing.T) {
 		t.Fatal(raw)
 	}
 	run("", "resume", id)
-	raw = run(`{"model":null,"env_from":[]}`, "update", id, "--file", "-")
-	if !strings.Contains(raw, `"env_from":[]`) {
+	raw = run(`{"model":null,"services":[]}`, "update", id, "--file", "-")
+	if !strings.Contains(raw, `"services":[]`) {
 		t.Fatal(raw)
 	}
 	run("", "reset-session", id)
 	run("", "history", id)
 	run("", "settings")
-	for _, command := range []string{"profiles", "templates"} {
-		raw = run("", command)
-		if !strings.Contains(raw, `"is_default":true`) {
+	for _, command := range []string{"profiles", "templates", "services"} {
+		code, out, errout := invoke(t, server.URL, "test-key", "", command, "--json")
+		if code != 0 {
+			t.Fatal(code, errout)
+		}
+		raw = out
+		if command == "services" && !strings.Contains(raw, `"code":"orpheus-space"`) || command != "services" && !strings.Contains(raw, `"is_default":true`) {
 			t.Fatal(raw)
 		}
 	}

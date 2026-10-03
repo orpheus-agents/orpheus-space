@@ -34,6 +34,8 @@ func TestCatalogProxyAndSelectionContract(t *testing.T) {
 			_, _ = w.Write([]byte(`{"items":[{"name":"default","description":"Default profile","harness":"codex","model":null,"codex":{},"instructions":"Be concise"}]}`))
 		case "/api/v1/templates":
 			_, _ = w.Write([]byte(`{"items":[{"name":"sandbox","description":null}]}`))
+		case "/api/v1/services":
+			_, _ = w.Write([]byte(`{"items":[{"code":"orpheus-space","name":"Space","description":"Manage schedules","env_from":["ORPHEUS_SPACE_API_KEY"]}]}`))
 		default:
 			t.Error("unexpected upstream path", r.URL.Path)
 		}
@@ -50,22 +52,28 @@ func TestCatalogProxyAndSelectionContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	headers := map[string]string{"Authorization": "Bearer user-key", "Cookie": "unrelated=private-browser-value"}
-	request(t, h, "GET", "/api/v1/schedules/profiles", "", nil, 401)
+	request(t, h, "GET", "/api/v1/profiles", "", nil, 401)
+	request(t, h, "GET", "/api/v1/services", "", nil, 401)
 	if calls != 0 {
 		t.Fatal("unauthorized request reached upstream")
 	}
-	raw := request(t, h, "GET", "/api/v1/schedules/profiles", "", headers, 200)
+	raw := request(t, h, "GET", "/api/v1/profiles", "", headers, 200)
 	var profiles api.Profiles
 	if err = json.Unmarshal(raw.Body.Bytes(), &profiles); err != nil || len(profiles.Items) != 1 || !profiles.Items[0].IsDefault || !profiles.Items[0].Description.IsSpecified() || profiles.Items[0].Description.IsNull() || profiles.Items[0].Instructions != "Be concise" {
 		t.Fatal(profiles, err)
 	}
-	raw = request(t, h, "GET", "/api/v1/schedules/templates", "", headers, 200)
+	raw = request(t, h, "GET", "/api/v1/templates", "", headers, 200)
 	var templates api.Templates
 	if err = json.Unmarshal(raw.Body.Bytes(), &templates); err != nil || !templates.Items[0].IsDefault || !templates.Items[0].Description.IsNull() {
 		t.Fatal(templates, err)
 	}
+	raw = request(t, h, "GET", "/api/v1/services", "", headers, 200)
+	var services api.Services
+	if err = json.Unmarshal(raw.Body.Bytes(), &services); err != nil || len(services.Items) != 1 || services.Items[0].Code != "orpheus-space" || services.Items[0].Name != "Space" || services.Items[0].Description != "Manage schedules" || len(services.Items[0].EnvFrom) != 1 || services.Items[0].EnvFrom[0] != "ORPHEUS_SPACE_API_KEY" {
+		t.Fatal(services, err)
+	}
 	s.Store.DefaultProfile = "removed"
-	raw = request(t, h, "GET", "/api/v1/schedules/profiles", "", headers, 200)
+	raw = request(t, h, "GET", "/api/v1/profiles", "", headers, 200)
 	if err = json.Unmarshal(raw.Body.Bytes(), &profiles); err != nil || profiles.Items[0].IsDefault {
 		t.Fatal(profiles, err)
 	}
@@ -97,8 +105,8 @@ func TestCatalogProxyAndSelectionContract(t *testing.T) {
 	}
 	for _, code := range []int{401, 403, 500} {
 		status = code
-		for _, name := range []string{"profiles", "templates"} {
-			got := request(t, h, "GET", "/api/v1/schedules/"+name, "", headers, 503)
+		for _, name := range []string{"profiles", "templates", "services"} {
+			got := request(t, h, "GET", "/api/v1/"+name, "", headers, 503)
 			if !strings.Contains(got.Body.String(), "core_unavailable") || strings.Contains(got.Body.String(), "private upstream") {
 				t.Fatal(got.Body.String())
 			}

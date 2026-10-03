@@ -108,8 +108,8 @@ github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1y
 github.com/onsi/gomega v1.17.0/go.mod h1:HnhC7FXeEQY45zxNK3PPoIUhzk/80Xly9PcubAlGdZY=
 github.com/onsi/gomega v1.19.0 h1:4ieX6qQjPP/BfC3mpsAtIGGlxTWPeA3Inl/7DtXw1tw=
 github.com/onsi/gomega v1.19.0/go.mod h1:LY+I3pBVzYsTBU1AnDwOSxaYi9WoWiqgwooUqq9yPro=
-github.com/orpheus-agents/orpheus v0.5.0 h1:toZ7YNCRuCnSGdRq/W1B7BBscwqWIFc+sMy/SZk/Rp4=
-github.com/orpheus-agents/orpheus v0.5.0/go.mod h1:ZTUyXfaz6S7V00Ud3brRtL1DxSKlwlP1iOeeJdyqNWo=
+github.com/orpheus-agents/orpheus v0.6.0 h1:xCPQCMY9BOtWWdeTNOt7O7QdlnMP5Dn8pwbc8YiMICE=
+github.com/orpheus-agents/orpheus v0.6.0/go.mod h1:ZTUyXfaz6S7V00Ud3brRtL1DxSKlwlP1iOeeJdyqNWo=
 github.com/pelletier/go-toml/v2 v2.4.3 h1:GTRvJQutkOSftxIFD5xw9aepkYNuPWmVJpffdDPYVpY=
 github.com/pelletier/go-toml/v2 v2.4.3/go.mod h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8t9Stt+h56mCY=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=

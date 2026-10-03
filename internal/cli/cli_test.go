@@ -41,10 +41,8 @@ func TestCommands(t *testing.T) {
 		{[]string{"occurrence", id, oid}, "GET", "/" + id + "/occurrences/" + oid, ""},
 		{[]string{"result", id, oid}, "GET", "/" + id + "/occurrences/" + oid + "/result", ""},
 		{[]string{"settings"}, "GET", "/settings", ""},
-		{[]string{"profiles"}, "GET", "/profiles", ""},
-		{[]string{"templates"}, "GET", "/templates", ""},
 		{[]string{"preview", "--cron", "0 10 * * *", "--timezone", "Europe/Moscow"}, "POST", "/preview", `{"cron":"0 10 * * *","timezone":"Europe/Moscow"}`},
-		{[]string{"update", id, "--file", "-"}, "PATCH", "/" + id, `{"model":null,"env_from":[],"prompt":"one\ntwo"}`},
+		{[]string{"update", id, "--file", "-"}, "PATCH", "/" + id, `{"model":null,"services":[],"prompt":"one\ntwo"}`},
 	} {
 		t.Run(tc.args[0], func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

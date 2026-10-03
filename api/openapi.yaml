@@ -3,7 +3,7 @@ openapi: 3.0.3
 info:
   title: Orpheus Space API
   version: 0.1.0
-  description: Schedule management and stored history. Catalog and result endpoints read Orpheus synchronously; writes validate new profile and template selections.
+  description: Schedule management and stored history. Catalog and result endpoints read Orpheus synchronously; writes validate new profile, template and service selections.
   license:
     name: MIT
     url: https://opensource.org/license/mit
@@ -16,6 +16,8 @@ security:
 tags:
 - name: Schedules
   description: Shared schedules, settings and cron preview.
+- name: Catalogs
+  description: Available profiles, templates and services from Orpheus.
 - name: Auth
   description: Browser access mode.
 paths:
@@ -112,11 +114,11 @@ paths:
           description: Success
         default:
           "$ref": "#/components/responses/Problem"
-  "/api/v1/schedules/profiles":
+  "/api/v1/profiles":
     get:
       operationId: GetProfiles
       summary: Get Orpheus profiles and the creation default
-      tags: [Schedules]
+      tags: [Catalogs]
       responses:
         '200':
           description: Success
@@ -126,11 +128,11 @@ paths:
                 "$ref": "#/components/schemas/Profiles"
         default:
           "$ref": "#/components/responses/Problem"
-  "/api/v1/schedules/templates":
+  "/api/v1/templates":
     get:
       operationId: GetTemplates
       summary: Get Orpheus templates and the creation default
-      tags: [Schedules]
+      tags: [Catalogs]
       responses:
         '200':
           description: Success
@@ -140,10 +142,25 @@ paths:
                 "$ref": "#/components/schemas/Templates"
         default:
           "$ref": "#/components/responses/Problem"
+  "/api/v1/services":
+    get:
+      operationId: GetServices
+      summary: Get available Orpheus services
+      description: All services are available to every caller with read access. Returns ENV names, never values.
+      tags: [Catalogs]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Services"
+        default:
+          "$ref": "#/components/responses/Problem"
   "/api/v1/schedules/settings":
     get:
       operationId: GetSettings
-      summary: Get allowed environment names
+      summary: Get schedule interface settings
       tags:
       - Schedules
       responses:
@@ -472,12 +489,36 @@ components:
       enum:
       - new
       - reuse
-    EnvFrom:
+    ServiceCodes:
+      description: Explicit selection of service codes. No defaults; empty clears the selection. Unknown codes return 422 and an unavailable catalog returns 503. Unchanged selections can be preserved without the catalog; resuming validates the full selection.
       type: array
       uniqueItems: true
       items:
         type: string
-        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+        pattern: "^[a-z][a-z0-9_-]{0,63}$"
+    Service:
+      type: object
+      additionalProperties: false
+      required: [code, name, description, env_from]
+      properties:
+        code:
+          type: string
+          pattern: "^[a-z][a-z0-9_-]{0,63}$"
+        name: {type: string}
+        description: {type: string}
+        env_from:
+          type: array
+          items:
+            type: string
+          description: Names of worker environment variables included in this service; never values.
+    Services:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/Service'}
     Profile:
       type: object
       additionalProperties: false
@@ -565,8 +606,8 @@ components:
           nullable: true
           minLength: 1
           description: SAML non-admins must use their session email; omission fills it, explicit null is forbidden. Full-access callers may use any owner or null.
-        env_from:
-          "$ref": "#/components/schemas/EnvFrom"
+        services:
+          "$ref": "#/components/schemas/ServiceCodes"
     UpdateSchedule:
       type: object
       additionalProperties: false
@@ -604,8 +645,8 @@ components:
           type: string
           nullable: true
           minLength: 1
-        env_from:
-          "$ref": "#/components/schemas/EnvFrom"
+        services:
+          "$ref": "#/components/schemas/ServiceCodes"
     Schedule:
       type: object
       additionalProperties: false
@@ -623,7 +664,7 @@ components:
       - template
       - session_mode
       - owner_email
-      - env_from
+      - services
       - created_at
       - updated_at
       - next_run_at
@@ -671,8 +712,8 @@ components:
           type: string
           nullable: true
           minLength: 1
-        env_from:
-          "$ref": "#/components/schemas/EnvFrom"
+        services:
+          "$ref": "#/components/schemas/ServiceCodes"
         id:
           type: string
           format: uuid
@@ -710,14 +751,8 @@ components:
       type: object
       additionalProperties: false
       required:
-      - base_env_from
-      - allowed_env_from
       - browser_auth
       properties:
-        base_env_from:
-          "$ref": "#/components/schemas/EnvFrom"
-        allowed_env_from:
-          "$ref": "#/components/schemas/EnvFrom"
         browser_auth:
           type: string
           enum:

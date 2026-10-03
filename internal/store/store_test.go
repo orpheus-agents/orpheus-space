@@ -19,7 +19,7 @@ import (
 
 func fixture(t *testing.T) (*Store, schedule.Input) {
 	t.Helper()
-	s := &Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t), AllowedEnv: []string{"A", "B"}, Now: func() time.Time { return time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) }}
+	s := &Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t), Now: func() time.Time { return time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) }}
 	in := schedule.Defaults()
 	in.Name = "Report"
 	in.Prompt = "Summarize incidents"
@@ -120,15 +120,15 @@ func TestPauseResumeAndPartialChanges(t *testing.T) {
 	s, in := fixture(t)
 	in.Model = new("model")
 	in.OwnerEmail = new("alice@example.com")
-	in.EnvFrom = []string{"A"}
+	in.Services = []string{"a"}
 	created, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := s.now().Add(48 * time.Hour)
 	s.Now = func() time.Time { return now }
-	updated, err := s.Update(t.Context(), access.Principal{ManageAll: true}, created.ID, []byte(`{"name":"Renamed","model":null,"owner_email":null,"env_from":[]}`))
-	if err != nil || updated.Model != nil || updated.OwnerEmail != nil || len(updated.EnvFrom) != 0 || !updated.NextRunAt.Equal(*created.NextRunAt) {
+	updated, err := s.Update(t.Context(), access.Principal{ManageAll: true}, created.ID, []byte(`{"name":"Renamed","model":null,"owner_email":null,"services":[]}`))
+	if err != nil || updated.Model != nil || updated.OwnerEmail != nil || len(updated.Services) != 0 || !updated.NextRunAt.Equal(*created.NextRunAt) {
 		t.Fatal(updated, err)
 	}
 	paused, err := s.Update(t.Context(), access.Principal{ManageAll: true}, created.ID, []byte(`{"status":"paused"}`))
@@ -143,7 +143,7 @@ func TestPauseResumeAndPartialChanges(t *testing.T) {
 	if err != nil || zone.NextRunAt.Hour() != 10 {
 		t.Fatal(zone, err)
 	}
-	for _, patch := range []string{`{"name":""}`, `{"env_from":["X"]}`, `{"env_from":["A","A"]}`, `{"cron":"bad"}`} {
+	for _, patch := range []string{`{"name":""}`, `{"services":["missing"]}`, `{"services":["a","a"]}`, `{"cron":"bad"}`} {
 		_, err = s.Update(t.Context(), access.Principal{ManageAll: true}, created.ID, []byte(patch))
 		requireStatus(t, err, 422)
 	}

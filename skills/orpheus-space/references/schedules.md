@@ -14,7 +14,7 @@ tools and credentials in the task's environment. Space stores status and the run
 reference; `result` retrieves the outcome from core without publishing it elsewhere.
 
 Before creating a task or changing its profile/template, read
-`orpheus-space schedule profiles --json` and `schedule templates --json`.
+`orpheus-space profiles --json` and `orpheus-space templates --json`.
 Each response has `items` with exact names, descriptions and `is_default`.
 Honor the user's explicit choice. Otherwise use the marked defaults; omitting
 these fields on creation asks the server to save its configured defaults.
@@ -23,28 +23,25 @@ catalog. Never invent a name or silently replace a removed choice. Do not change
 existing tasks' selections unless requested. Catalog failures do not prevent
 pausing a task or editing its other fields.
 
-Run `orpheus-space schedule settings --json` before adding ENV references.
-Its JSON response contains `allowed_env_from`, an array of ENV names permitted
-by this Space installation, and `base_env_from`, the names already included in
-every task. These are API response fields, not environment variables to read
-from the agent's shell. For example:
+Read `orpheus-space services --json` before selecting services. The response has
+`items` with `code`, `name`, `description` and `env_from` (ENV names, never values).
+Choose the codes needed for the task's sources and delivery tools and pass them in
+`services`. There are no base or default services: `services: []` gives no service
+access. All catalog entries are selectable, including Orpheus Space.
 
-```json
-{
-  "allowed_env_from": ["REPORT_API_KEY", "REPORT_HOST"],
-  "base_env_from": ["REPORT_HOST"],
-  "browser_auth": "api_only"
-}
-```
-
-Use only names returned in `allowed_env_from` for the task's `env_from`. Base
-names are included automatically. The core worker supplies the corresponding
-values at execution time; never request secret values or put them in JSON or
-prompts.
+Never invent a code or ask for secret values. Orpheus resolves the selected
+services from its configuration and the worker supplies ENV values at execution.
+Unknown codes return 422; catalog unavailability returns 503 when validation is
+needed. An unchanged selection can be kept while editing other fields offline.
+Resuming a task validates its complete service selection. Removed services can
+be cleared or replaced with available choices.
 
 - `session_mode=new` starts each run in a new session; this is the default.
 - `session_mode=reuse` preserves conversation history. Changes to profile, template, model,
-  env_from, session mode, or effective base configuration start a new session after the previous run ends.
+  services, session mode, or effective base configuration start a new session after the previous run ends.
+Changes to a service definition do not expand an existing reusable session. Use
+`reset-session` when the next execution must pick up the updated definition.
+
 - `model` is optional; null leaves the choice to the core profile.
 - `status=active` / `paused` means running / paused. Pausing does not cancel a run
   already accepted by core.
