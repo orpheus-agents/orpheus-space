@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/orpheus-agents/orpheus-space/internal/access"
 	"github.com/orpheus-agents/orpheus-space/internal/config"
 	"github.com/orpheus-agents/orpheus-space/internal/core"
 	"github.com/orpheus-agents/orpheus-space/internal/schedule"
@@ -130,7 +131,7 @@ func fixture(t *testing.T) (*Worker, *coreFixture, *time.Time, schedule.Schedule
 	in.Cron = "* * * * *"
 	in.Timezone = "UTC"
 	in.SessionMode = "reuse"
-	task, err := storage.Create(t.Context(), in, nil)
+	task, err := storage.Create(t.Context(), access.Principal{ManageAll: true}, in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +183,7 @@ func TestReuseResetAndConfigurationChange(t *testing.T) {
 	if request.AllowMultipleRuns == nil || !*request.AllowMultipleRuns || *request.Namespace != "schedule" || *request.ExternalKey != task.ID.String() || !strings.Contains(request.Messages[0].Text, "scheduled_at:") {
 		t.Fatal(request)
 	}
-	if _, err := w.Store.ResetSession(t.Context(), task.ID); err == nil {
+	if _, err := w.Store.ResetSession(t.Context(), access.Principal{ManageAll: true}, task.ID); err == nil {
 		t.Fatal("reset active accepted run")
 	}
 	complete(f, now.Add(20*time.Second))
@@ -194,7 +195,7 @@ func TestReuseResetAndConfigurationChange(t *testing.T) {
 	complete(f, now.Add(time.Second))
 	*now = now.Add(10 * time.Second)
 	tick(t, w, f)
-	if _, err := w.Store.ResetSession(t.Context(), task.ID); err != nil {
+	if _, err := w.Store.ResetSession(t.Context(), access.Principal{ManageAll: true}, task.ID); err != nil {
 		t.Fatal(err)
 	}
 	*now = now.Add(50 * time.Second)
@@ -205,7 +206,7 @@ func TestReuseResetAndConfigurationChange(t *testing.T) {
 	complete(f, now.Add(time.Second))
 	*now = now.Add(10 * time.Second)
 	tick(t, w, f)
-	if _, err := w.Store.Update(t.Context(), task.ID, []byte(`{"model":"other","env_from":["B"]}`)); err != nil {
+	if _, err := w.Store.Update(t.Context(), access.Principal{ManageAll: true}, task.ID, []byte(`{"model":"other","env_from":["B"]}`)); err != nil {
 		t.Fatal(err)
 	}
 	*now = now.Add(50 * time.Second)
@@ -229,7 +230,7 @@ func TestLostResponseRestartAndPause(t *testing.T) {
 	if rows := history(t, w, task.ID); len(rows) != 1 || rows[0].State != "dispatching" {
 		t.Fatal(rows)
 	}
-	if _, err := w.Store.Update(t.Context(), task.ID, []byte(`{"status":"paused","prompt":"new prompt","model":"new","profile":"other","template":"other"}`)); err != nil {
+	if _, err := w.Store.Update(t.Context(), access.Principal{ManageAll: true}, task.ID, []byte(`{"status":"paused","prompt":"new prompt","model":"new","profile":"other","template":"other"}`)); err != nil {
 		t.Fatal(err)
 	}
 	replacement := *w
@@ -286,14 +287,14 @@ func TestPauseAndDeleteCancelPending(t *testing.T) {
 			if err := w.Store.Plan(t.Context(), task.ID, *now); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := w.Store.ResetSession(t.Context(), task.ID); err == nil {
+			if _, err := w.Store.ResetSession(t.Context(), access.Principal{ManageAll: true}, task.ID); err == nil {
 				t.Fatal("reset pending")
 			}
 			var err error
 			if remove {
-				err = w.Store.Delete(t.Context(), task.ID)
+				err = w.Store.Delete(t.Context(), access.Principal{ManageAll: true}, task.ID)
 			} else {
-				_, err = w.Store.Update(t.Context(), task.ID, []byte(`{"status":"paused"}`))
+				_, err = w.Store.Update(t.Context(), access.Principal{ManageAll: true}, task.ID, []byte(`{"status":"paused"}`))
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -529,7 +530,7 @@ func TestMissingRunBlocksUntilRecovered(t *testing.T) {
 	if got.State != "accepted" || got.SyncErrorCode == nil || *got.SyncErrorCode != "run_not_found" || *got.RunStatus != *before.RunStatus || !got.ObservedAt.Equal(*before.ObservedAt) {
 		t.Fatal("missing run lost cached observation", got)
 	}
-	_, err := w.Store.ResetSession(t.Context(), task.ID)
+	_, err := w.Store.ResetSession(t.Context(), access.Principal{ManageAll: true}, task.ID)
 	if e, ok := errors.AsType[*schedule.Error](err); !ok || e.Status != 409 {
 		t.Fatal("reset allowed unresolved run", err)
 	}
@@ -575,7 +576,7 @@ func TestLastSuccessSurvivesFailureAndRetry(t *testing.T) {
 	f.runs[failedRun.ID] = failedRun
 	*now = now.Add(10 * time.Second)
 	tick(t, w, f)
-	if _, err := w.Store.ResetSession(t.Context(), task.ID); err != nil {
+	if _, err := w.Store.ResetSession(t.Context(), access.Principal{ManageAll: true}, task.ID); err != nil {
 		t.Fatal(err)
 	}
 	f.lose = true

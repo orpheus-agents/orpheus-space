@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/orpheus-agents/orpheus-space/internal/access"
 	"github.com/orpheus-agents/orpheus-space/internal/api"
 )
 
@@ -44,12 +45,17 @@ func (s *Server) GetAuthSession(ctx context.Context, _ api.GetAuthSessionRequest
 	return s.browserResponse(ctx, func(w http.ResponseWriter, r *http.Request) error {
 		bearer, _ := ctx.Value(bearerKey{}).(bool)
 		if bearer {
-			state := api.GetAuthSession200JSONResponse{Mode: api.AuthSessionMode(s.Config.Auth.Mode), Authenticated: true, ReadAccess: true, WriteAccess: true}
+			state := api.GetAuthSession200JSONResponse{Mode: api.AuthSessionMode(s.Config.Auth.Mode), Authenticated: true, ReadAccess: true, WriteAccess: true, CanManageAll: true}
 			return state.VisitGetAuthSessionResponse(w)
 		}
 		state, err := s.auth.State(w, r)
 		if err != nil {
 			return err
+		}
+		if state.User != nil {
+			actor := access.Browser(state.User.Email, s.Config.Access.AdminEmails)
+			state.WriteAccess = actor.CanCreate()
+			state.CanManageAll = actor.ManageAll
 		}
 		w.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(w).Encode(state)

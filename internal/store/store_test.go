@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/orpheus-agents/orpheus-space/internal/access"
 	"github.com/orpheus-agents/orpheus-space/internal/schedule"
 	"github.com/orpheus-agents/orpheus-space/internal/testutil"
 )
@@ -37,21 +38,21 @@ func TestIdempotencyAndTombstones(t *testing.T) {
 	s, in := fixture(t)
 	key := uuid.New()
 	in.OwnerEmail = new(" ALICE@example.com ")
-	first, err := s.Create(t.Context(), in, &key)
+	first, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, &key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	in.OwnerEmail = new("alice@example.com")
-	replay, err := s.Create(t.Context(), in, &key)
+	replay, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, &key)
 	if err != nil || first.ID != replay.ID {
 		t.Fatal(replay, err)
 	}
 	in.Name = "Other"
-	_, err = s.Create(t.Context(), in, &key)
+	_, err = s.Create(t.Context(), access.Principal{ManageAll: true}, in, &key)
 	requireStatus(t, err, 409)
 	in.Name = "Report"
 	for range 2 {
-		if err = s.Delete(t.Context(), first.ID); err != nil {
+		if err = s.Delete(t.Context(), access.Principal{ManageAll: true}, first.ID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -63,9 +64,9 @@ func TestIdempotencyAndTombstones(t *testing.T) {
 	if err != nil || len(page.Items) != 0 {
 		t.Fatal(page, err)
 	}
-	_, err = s.Update(t.Context(), first.ID, []byte(`{"name":"No"}`))
+	_, err = s.Update(t.Context(), access.Principal{ManageAll: true}, first.ID, []byte(`{"name":"No"}`))
 	requireStatus(t, err, 409)
-	replay, err = s.Create(t.Context(), in, &key)
+	replay, err = s.Create(t.Context(), access.Principal{ManageAll: true}, in, &key)
 	if err != nil || replay.DeletedAt != nil || replay.ID != first.ID {
 		t.Fatal(replay, err)
 	}
@@ -84,7 +85,7 @@ func TestConcurrentCreateAndPatch(t *testing.T) {
 	ids := make(chan uuid.UUID, 8)
 	for range 8 {
 		wg.Go(func() {
-			out, err := s.Create(t.Context(), in, &key)
+			out, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, &key)
 			if err != nil {
 				t.Error(err)
 				return
@@ -104,7 +105,7 @@ func TestConcurrentCreateAndPatch(t *testing.T) {
 	patches := []string{`{"name":"New name"}`, `{"owner_email":"bob@example.com"}`}
 	for _, patch := range patches {
 		wg.Go(func() {
-			if _, err := s.Update(t.Context(), id, []byte(patch)); err != nil {
+			if _, err := s.Update(t.Context(), access.Principal{ManageAll: true}, id, []byte(patch)); err != nil {
 				t.Error(err)
 			}
 		})
@@ -120,30 +121,30 @@ func TestPauseResumeAndPartialChanges(t *testing.T) {
 	in.Model = new("model")
 	in.OwnerEmail = new("alice@example.com")
 	in.EnvFrom = []string{"A"}
-	created, err := s.Create(t.Context(), in, nil)
+	created, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := s.now().Add(48 * time.Hour)
 	s.Now = func() time.Time { return now }
-	updated, err := s.Update(t.Context(), created.ID, []byte(`{"name":"Renamed","model":null,"owner_email":null,"env_from":[]}`))
+	updated, err := s.Update(t.Context(), access.Principal{ManageAll: true}, created.ID, []byte(`{"name":"Renamed","model":null,"owner_email":null,"env_from":[]}`))
 	if err != nil || updated.Model != nil || updated.OwnerEmail != nil || len(updated.EnvFrom) != 0 || !updated.NextRunAt.Equal(*created.NextRunAt) {
 		t.Fatal(updated, err)
 	}
-	paused, err := s.Update(t.Context(), created.ID, []byte(`{"status":"paused"}`))
+	paused, err := s.Update(t.Context(), access.Principal{ManageAll: true}, created.ID, []byte(`{"status":"paused"}`))
 	if err != nil || paused.NextRunAt != nil {
 		t.Fatal(paused, err)
 	}
-	resumed, err := s.Update(t.Context(), created.ID, []byte(`{"status":"active"}`))
+	resumed, err := s.Update(t.Context(), access.Principal{ManageAll: true}, created.ID, []byte(`{"status":"active"}`))
 	if err != nil || !resumed.NextRunAt.After(now) {
 		t.Fatal(resumed, err)
 	}
-	zone, err := s.Update(t.Context(), created.ID, []byte(`{"timezone":"UTC"}`))
+	zone, err := s.Update(t.Context(), access.Principal{ManageAll: true}, created.ID, []byte(`{"timezone":"UTC"}`))
 	if err != nil || zone.NextRunAt.Hour() != 10 {
 		t.Fatal(zone, err)
 	}
 	for _, patch := range []string{`{"name":""}`, `{"env_from":["X"]}`, `{"env_from":["A","A"]}`, `{"cron":"bad"}`} {
-		_, err = s.Update(t.Context(), created.ID, []byte(patch))
+		_, err = s.Update(t.Context(), access.Principal{ManageAll: true}, created.ID, []byte(patch))
 		requireStatus(t, err, 422)
 	}
 }
@@ -155,7 +156,7 @@ func TestCursorAndFilters(t *testing.T) {
 		if i == 0 {
 			in.OwnerEmail = nil
 		}
-		if _, err := s.Create(t.Context(), in, nil); err != nil {
+		if _, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -167,7 +168,7 @@ func TestCursorAndFilters(t *testing.T) {
 	if err != nil || first.NextCursor == nil {
 		t.Fatal(first, err)
 	}
-	added, err := s.Create(t.Context(), in, nil)
+	added, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +215,7 @@ func TestCursorWithManyLongOwners(t *testing.T) {
 	}
 	in.OwnerEmail = &owners[0]
 	for range 3 {
-		if _, err := s.Create(t.Context(), in, nil); err != nil {
+		if _, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

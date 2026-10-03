@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/orpheus-agents/orpheus-space/internal/access"
 	"github.com/orpheus-agents/orpheus-space/internal/migrate"
 	"github.com/orpheus-agents/orpheus-space/internal/schedule"
 	"github.com/orpheus-agents/orpheus-space/internal/store"
@@ -83,7 +84,7 @@ func TestSelectionMigrationAndLegacyReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &store.Store{Pool: pool, DefaultProfile: "changed", DefaultTemplate: "changed"}
-	replay, err := s.Create(t.Context(), input, &key)
+	replay, err := s.Create(t.Context(), access.Principal{ManageAll: true}, input, &key)
 	if err != nil || replay.ID != id || replay.Profile != "old-profile" || replay.Template != "old-template:v1" {
 		t.Fatal(replay, err)
 	}

@@ -1,3 +1,7 @@
+[access]
+# SAML admins can manage all schedules. Everyone else can change only their own.
+admin_emails = []
+
 [execution.agent]
 profile = "default"
 # instructions_file = "/etc/orpheus-space/instructions.md"

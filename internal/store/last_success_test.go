@@ -9,16 +9,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/orpheus-agents/orpheus-space/internal/access"
 	"github.com/orpheus-agents/orpheus-space/internal/store/db"
 )
 
 func TestLastSuccessfulOccurrenceSelection(t *testing.T) {
 	s, in := fixture(t)
-	task, err := s.Create(t.Context(), in, nil)
+	task, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := s.Create(t.Context(), in, nil)
+	other, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
