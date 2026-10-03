@@ -19,7 +19,7 @@ func TestCoreFailureClassification(t *testing.T) {
 		status     int
 		body, code string
 		uncertain  bool
-	}{{422, `{"error":{"code":"unknown_profile"}}`, "unknown_profile", false}, {422, `{"error":{"code":"unknown_template"}}`, "unknown_template", false}, {401, `{"error":{"code":"unauthorized","message":"secret"}}`, "unauthorized", false}, {503, `{"error":{"code":"capacity_exhausted"}}`, "capacity_exhausted", false}, {500, `internal secret`, "core_unavailable", true}, {202, `{}`, "core_invalid_response", true}, {202, `broken`, "core_invalid_response", true}, {302, ``, "core_unavailable", true}} {
+	}{{422, `{"error":{"code":"unknown_service","message":"secret"}}`, "unknown_service", false}, {422, `{"error":{"code":"unknown_profile"}}`, "unknown_profile", false}, {422, `{"error":{"code":"unknown_template"}}`, "unknown_template", false}, {401, `{"error":{"code":"unauthorized","message":"secret"}}`, "unauthorized", false}, {503, `{"error":{"code":"capacity_exhausted"}}`, "capacity_exhausted", false}, {500, `internal secret`, "core_unavailable", true}, {202, `{}`, "core_invalid_response", true}, {202, `broken`, "core_invalid_response", true}, {302, ``, "core_unavailable", true}} {
 		t.Run(tc.code+http.StatusText(tc.status), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Header.Get("Authorization") != "Bearer key" {
@@ -68,7 +68,7 @@ func TestCoreCancellationAndRunLinkage(t *testing.T) {
 }
 
 func TestCatalogCancellationAndMalformedResponse(t *testing.T) {
-	for _, name := range []string{"profiles", "templates"} {
+	for _, name := range []string{"profiles", "templates", "services"} {
 		t.Run(name, func(t *testing.T) {
 			for _, body := range []string{`{}`, `{"items":null}`, `broken`} {
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }))
@@ -76,9 +76,12 @@ func TestCatalogCancellationAndMalformedResponse(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if name == "profiles" {
+				switch name {
+				case "profiles":
 					_, err = client.Profiles(t.Context())
-				} else {
+				case "services":
+					_, err = client.Services(t.Context())
+				default:
 					_, err = client.Templates(t.Context())
 				}
 				server.Close()
@@ -94,9 +97,12 @@ func TestCatalogCancellationAndMalformedResponse(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 			defer cancel()
-			if name == "profiles" {
+			switch name {
+			case "profiles":
 				_, err = client.Profiles(ctx)
-			} else {
+			case "services":
+				_, err = client.Services(ctx)
+			default:
 				_, err = client.Templates(ctx)
 			}
 			if err == nil {

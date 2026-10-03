@@ -26,7 +26,7 @@ import (
 func accessFixture(t *testing.T) (http.Handler, *Server, func(*string) map[string]string) {
 	t.Helper()
 	f := testutil.NewSAML(t, "https://space.test")
-	storage := &store.Store{Pool: testutil.Database(t), AllowedEnv: []string{"A"}, DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}}
+	storage := &store.Store{Pool: testutil.Database(t), DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}}
 	s := &Server{Config: config.Config{Auth: f.Config, Access: config.Access{AdminEmails: []string{"admin@example.com"}}, PublicAPIKeys: []string{"key"}, MaxRequestBytes: 4096}, Store: storage, Core: testutil.Catalog{}}
 	h, err := Handler(s)
 	if err != nil {
@@ -109,14 +109,18 @@ func TestScheduleAccessMatrix(t *testing.T) {
 					}
 				}
 				request(t, h, "GET", path+"/occurrences", "", headers, 200)
-				request(t, h, "GET", "/api/v1/schedules/profiles", "", headers, 200)
-				request(t, h, "GET", "/api/v1/schedules/templates", "", headers, 200)
+				request(t, h, "GET", "/api/v1/profiles", "", headers, 200)
+				request(t, h, "GET", "/api/v1/templates", "", headers, 200)
+				services := request(t, h, "GET", "/api/v1/services", "", headers, 200)
+				if !strings.Contains(services.Body.String(), `"code":"orpheus-space"`) {
+					t.Fatal("service catalog filtered by role", services.Body.String())
+				}
 				request(t, h, "POST", "/api/v1/schedules/preview", `{"cron":"0 9 * * *","timezone":"UTC"}`, headers, 200)
 				status := 403
 				if canEdit {
 					status = 200
 				}
-				for _, patch := range []string{`{"name":"Changed"}`, `{"status":"paused"}`, `{"status":"active"}`, `{"profile":"other"}`} {
+				for _, patch := range []string{`{"name":"Changed"}`, `{"status":"paused"}`, `{"status":"active"}`, `{"profile":"other"}`, `{"services":["orpheus-space"]}`} {
 					w := request(t, h, "PATCH", path, patch, headers, status)
 					if !canEdit && !strings.Contains(w.Body.String(), "schedule_forbidden") {
 						t.Fatal(w.Body.String())

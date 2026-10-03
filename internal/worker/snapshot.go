@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -47,13 +46,11 @@ func Builder(cfg config.Config) store.BuildSnapshot {
 		if err != nil {
 			return store.Snapshot{}, schedule.Invalid("timezone")
 		}
-		env := append(slices.Clone(cfg.Execution.Sandbox.EnvFrom), row.EnvFrom...)
-		slices.Sort(env)
-		env = slices.Compact(env)
-		if _, err := schedule.EnvNames(env, cfg.AllowedEnv); err != nil {
+		services, err := schedule.ServiceCodes(row.Services)
+		if err != nil {
 			return store.Snapshot{}, err
 		}
-		configuration := coreapi.ConfigurationInput{Agent: coreapi.AgentInput{Profile: row.Profile, Model: row.Model, Instructions: cfg.Execution.Agent.Instructions}, Sandbox: coreapi.SandboxInput{Template: row.Template, EnvFrom: &env}, Limits: &coreapi.LimitsInput{RunTimeoutSeconds: new(cfg.Execution.Limits.RunTimeoutSeconds), MaxSessionTokens: cfg.Execution.Limits.MaxSessionTokens}}
+		configuration := coreapi.ConfigurationInput{Agent: coreapi.AgentInput{Profile: row.Profile, Model: row.Model, Instructions: cfg.Execution.Agent.Instructions}, Sandbox: coreapi.SandboxInput{Template: row.Template, Services: &services}, Limits: &coreapi.LimitsInput{RunTimeoutSeconds: new(cfg.Execution.Limits.RunTimeoutSeconds), MaxSessionTokens: cfg.Execution.Limits.MaxSessionTokens}}
 		fingerprintInput, _ := json.Marshal(struct {
 			Configuration coreapi.ConfigurationInput
 			Mode          string

@@ -273,27 +273,26 @@ type CodexProfileSummary string
 
 // CreateSchedule defines model for CreateSchedule.
 type CreateSchedule struct {
-	Cron    string                    `json:"cron"`
-	EnvFrom *EnvFrom                  `json:"env_from,omitempty"`
-	Model   nullable.Nullable[string] `json:"model,omitempty"`
-	Name    string                    `json:"name"`
+	Cron  string                    `json:"cron"`
+	Model nullable.Nullable[string] `json:"model,omitempty"`
+	Name  string                    `json:"name"`
 
 	// OwnerEmail SAML non-admins must use their session email; omission fills it, explicit null is forbidden. Full-access callers may use any owner or null.
 	OwnerEmail nullable.Nullable[string] `json:"owner_email,omitempty"`
 
 	// Profile Exact Orpheus profile name; creation uses the configured default when omitted.
-	Profile     *string      `json:"profile,omitempty"`
-	Prompt      string       `json:"prompt"`
-	SessionMode *SessionMode `json:"session_mode,omitempty"`
-	Status      *Status      `json:"status,omitempty"`
+	Profile *string `json:"profile,omitempty"`
+	Prompt  string  `json:"prompt"`
+
+	// Services Explicit selection of service codes. No defaults; empty clears the selection. Unknown codes return 422 and an unavailable catalog returns 503. Unchanged selections can be preserved without the catalog; resuming validates the full selection.
+	Services    *ServiceCodes `json:"services,omitempty"`
+	SessionMode *SessionMode  `json:"session_mode,omitempty"`
+	Status      *Status       `json:"status,omitempty"`
 
 	// Template Exact Orpheus template name; creation uses the configured default when omitted.
 	Template *string `json:"template,omitempty"`
 	Timezone string  `json:"timezone"`
 }
-
-// EnvFrom defines model for EnvFrom.
-type EnvFrom = []string
 
 // NullableOccurrence defines model for NullableOccurrence.
 type NullableOccurrence struct {
@@ -412,7 +411,6 @@ type Schedule struct {
 	CreatedAt      time.Time                             `json:"created_at"`
 	Cron           string                                `json:"cron"`
 	DeletedAt      nullable.Nullable[time.Time]          `json:"deleted_at"`
-	EnvFrom        EnvFrom                               `json:"env_from"`
 	ID             openapi_types.UUID                    `json:"id"`
 	LastOccurrence nullable.Nullable[NullableOccurrence] `json:"last_occurrence"`
 	Model          nullable.Nullable[string]             `json:"model"`
@@ -421,10 +419,13 @@ type Schedule struct {
 	OwnerEmail     nullable.Nullable[string]             `json:"owner_email"`
 
 	// Profile Stored Orpheus profile name.
-	Profile     string      `json:"profile"`
-	Prompt      string      `json:"prompt"`
-	SessionMode SessionMode `json:"session_mode"`
-	Status      Status      `json:"status"`
+	Profile string `json:"profile"`
+	Prompt  string `json:"prompt"`
+
+	// Services Explicit selection of service codes. No defaults; empty clears the selection. Unknown codes return 422 and an unavailable catalog returns 503. Unchanged selections can be preserved without the catalog; resuming validates the full selection.
+	Services    ServiceCodes `json:"services"`
+	SessionMode SessionMode  `json:"session_mode"`
+	Status      Status       `json:"status"`
 
 	// Template Stored Orpheus template name.
 	Template  string    `json:"template"`
@@ -441,14 +442,30 @@ type SchedulePage struct {
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
 }
 
+// Service defines model for Service.
+type Service struct {
+	Code        string `json:"code"`
+	Description string `json:"description"`
+
+	// EnvFrom Names of worker environment variables included in this service; never values.
+	EnvFrom []string `json:"env_from"`
+	Name    string   `json:"name"`
+}
+
+// ServiceCodes Explicit selection of service codes. No defaults; empty clears the selection. Unknown codes return 422 and an unavailable catalog returns 503. Unchanged selections can be preserved without the catalog; resuming validates the full selection.
+type ServiceCodes = []string
+
+// Services defines model for Services.
+type Services struct {
+	Items []Service `json:"items"`
+}
+
 // SessionMode defines model for SessionMode.
 type SessionMode string
 
 // Settings defines model for Settings.
 type Settings struct {
-	AllowedEnvFrom EnvFrom             `json:"allowed_env_from"`
-	BaseEnvFrom    EnvFrom             `json:"base_env_from"`
-	BrowserAuth    SettingsBrowserAuth `json:"browser_auth"`
+	BrowserAuth SettingsBrowserAuth `json:"browser_auth"`
 }
 
 // SettingsBrowserAuth defines model for Settings.BrowserAuth.
@@ -472,16 +489,18 @@ type Templates struct {
 // UpdateSchedule defines model for UpdateSchedule.
 type UpdateSchedule struct {
 	Cron       *string                   `json:"cron,omitempty"`
-	EnvFrom    *EnvFrom                  `json:"env_from,omitempty"`
 	Model      nullable.Nullable[string] `json:"model,omitempty"`
 	Name       *string                   `json:"name,omitempty"`
 	OwnerEmail nullable.Nullable[string] `json:"owner_email,omitempty"`
 
 	// Profile Exact Orpheus profile name; omitted keeps the stored choice; a change starts a new reusable session.
-	Profile     *string      `json:"profile,omitempty"`
-	Prompt      *string      `json:"prompt,omitempty"`
-	SessionMode *SessionMode `json:"session_mode,omitempty"`
-	Status      *Status      `json:"status,omitempty"`
+	Profile *string `json:"profile,omitempty"`
+	Prompt  *string `json:"prompt,omitempty"`
+
+	// Services Explicit selection of service codes. No defaults; empty clears the selection. Unknown codes return 422 and an unavailable catalog returns 503. Unchanged selections can be preserved without the catalog; resuming validates the full selection.
+	Services    *ServiceCodes `json:"services,omitempty"`
+	SessionMode *SessionMode  `json:"session_mode,omitempty"`
+	Status      *Status       `json:"status,omitempty"`
 
 	// Template Exact Orpheus template name; omitted keeps the stored choice; a change starts a new reusable session.
 	Template *string `json:"template,omitempty"`
@@ -556,6 +575,9 @@ type ServerInterface interface {
 	// GetAuthSession Get browser access state
 	// (GET /api/v1/auth/session)
 	GetAuthSession(w http.ResponseWriter, r *http.Request)
+	// GetProfiles Get Orpheus profiles and the creation default
+	// (GET /api/v1/profiles)
+	GetProfiles(w http.ResponseWriter, r *http.Request)
 	// ListSchedules List schedules
 	// (GET /api/v1/schedules)
 	ListSchedules(w http.ResponseWriter, r *http.Request, params ListSchedulesParams)
@@ -565,15 +587,9 @@ type ServerInterface interface {
 	// PreviewSchedule Preview five future cron occurrences
 	// (POST /api/v1/schedules/preview)
 	PreviewSchedule(w http.ResponseWriter, r *http.Request)
-	// GetProfiles Get Orpheus profiles and the creation default
-	// (GET /api/v1/schedules/profiles)
-	GetProfiles(w http.ResponseWriter, r *http.Request)
-	// GetSettings Get allowed environment names
+	// GetSettings Get schedule interface settings
 	// (GET /api/v1/schedules/settings)
 	GetSettings(w http.ResponseWriter, r *http.Request)
-	// GetTemplates Get Orpheus templates and the creation default
-	// (GET /api/v1/schedules/templates)
-	GetTemplates(w http.ResponseWriter, r *http.Request)
 	// DeleteSchedule Soft delete a schedule
 	// (DELETE /api/v1/schedules/{id})
 	DeleteSchedule(w http.ResponseWriter, r *http.Request, id ID)
@@ -595,6 +611,12 @@ type ServerInterface interface {
 	// ResetSession Detach the reusable session for the next occurrence
 	// (POST /api/v1/schedules/{id}/reset-session)
 	ResetSession(w http.ResponseWriter, r *http.Request, id ID)
+	// GetServices Get available Orpheus services
+	// (GET /api/v1/services)
+	GetServices(w http.ResponseWriter, r *http.Request)
+	// GetTemplates Get Orpheus templates and the creation default
+	// (GET /api/v1/templates)
+	GetTemplates(w http.ResponseWriter, r *http.Request)
 	// BrowserCallback Consume a signed SAML HTTP-POST response
 	// (POST /auth/callback)
 	BrowserCallback(w http.ResponseWriter, r *http.Request)
@@ -623,6 +645,20 @@ func (siw *ServerInterfaceWrapper) GetAuthSession(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAuthSession(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProfiles operation middleware
+func (siw *ServerInterfaceWrapper) GetProfiles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProfiles(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -772,39 +808,11 @@ func (siw *ServerInterfaceWrapper) PreviewSchedule(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// GetProfiles operation middleware
-func (siw *ServerInterfaceWrapper) GetProfiles(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetProfiles(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetSettings(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetSettings(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetTemplates operation middleware
-func (siw *ServerInterfaceWrapper) GetTemplates(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTemplates(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1043,6 +1051,34 @@ func (siw *ServerInterfaceWrapper) ResetSession(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetServices operation middleware
+func (siw *ServerInterfaceWrapper) GetServices(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetServices(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTemplates operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTemplates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // BrowserCallback operation middleware
 func (siw *ServerInterfaceWrapper) BrowserCallback(w http.ResponseWriter, r *http.Request) {
 
@@ -1243,8 +1279,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/schedules/{id}", wrapper.DeleteSchedule)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schedules/{id}", wrapper.GetSchedule)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/schedules/{id}", wrapper.UpdateSchedule)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schedules/profiles", wrapper.GetProfiles)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schedules/templates", wrapper.GetTemplates)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/profiles", wrapper.GetProfiles)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/templates", wrapper.GetTemplates)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/services", wrapper.GetServices)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schedules/settings", wrapper.GetSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/schedules/preview", wrapper.PreviewSchedule)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/session", wrapper.GetAuthSession)
@@ -1289,6 +1326,44 @@ type GetAuthSessiondefaultJSONResponse struct {
 }
 
 func (response GetAuthSessiondefaultJSONResponse) VisitGetAuthSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProfilesRequestObject struct {
+}
+
+type GetProfilesResponseObject interface {
+	VisitGetProfilesResponse(w http.ResponseWriter) error
+}
+
+type GetProfiles200JSONResponse Profiles
+
+func (response GetProfiles200JSONResponse) VisitGetProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProfilesdefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetProfilesdefaultJSONResponse) VisitGetProfilesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -1418,44 +1493,6 @@ func (response PreviewScheduledefaultJSONResponse) VisitPreviewScheduleResponse(
 	return err
 }
 
-type GetProfilesRequestObject struct {
-}
-
-type GetProfilesResponseObject interface {
-	VisitGetProfilesResponse(w http.ResponseWriter) error
-}
-
-type GetProfiles200JSONResponse Profiles
-
-func (response GetProfiles200JSONResponse) VisitGetProfilesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetProfilesdefaultJSONResponse struct {
-	Body       Problem
-	StatusCode int
-}
-
-func (response GetProfilesdefaultJSONResponse) VisitGetProfilesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetSettingsRequestObject struct {
 }
 
@@ -1483,44 +1520,6 @@ type GetSettingsdefaultJSONResponse struct {
 }
 
 func (response GetSettingsdefaultJSONResponse) VisitGetSettingsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTemplatesRequestObject struct {
-}
-
-type GetTemplatesResponseObject interface {
-	VisitGetTemplatesResponse(w http.ResponseWriter) error
-}
-
-type GetTemplates200JSONResponse Templates
-
-func (response GetTemplates200JSONResponse) VisitGetTemplatesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTemplatesdefaultJSONResponse struct {
-	Body       Problem
-	StatusCode int
-}
-
-func (response GetTemplatesdefaultJSONResponse) VisitGetTemplatesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -1803,6 +1802,82 @@ func (response ResetSessiondefaultJSONResponse) VisitResetSessionResponse(w http
 	return err
 }
 
+type GetServicesRequestObject struct {
+}
+
+type GetServicesResponseObject interface {
+	VisitGetServicesResponse(w http.ResponseWriter) error
+}
+
+type GetServices200JSONResponse Services
+
+func (response GetServices200JSONResponse) VisitGetServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetServicesdefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetServicesdefaultJSONResponse) VisitGetServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTemplatesRequestObject struct {
+}
+
+type GetTemplatesResponseObject interface {
+	VisitGetTemplatesResponse(w http.ResponseWriter) error
+}
+
+type GetTemplates200JSONResponse Templates
+
+func (response GetTemplates200JSONResponse) VisitGetTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTemplatesdefaultJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetTemplatesdefaultJSONResponse) VisitGetTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type BrowserCallbackRequestObject struct {
 }
 
@@ -1965,6 +2040,9 @@ type StrictServerInterface interface {
 	// GetAuthSession Get browser access state
 	// (GET /api/v1/auth/session)
 	GetAuthSession(ctx context.Context, request GetAuthSessionRequestObject) (GetAuthSessionResponseObject, error)
+	// GetProfiles Get Orpheus profiles and the creation default
+	// (GET /api/v1/profiles)
+	GetProfiles(ctx context.Context, request GetProfilesRequestObject) (GetProfilesResponseObject, error)
 	// ListSchedules List schedules
 	// (GET /api/v1/schedules)
 	ListSchedules(ctx context.Context, request ListSchedulesRequestObject) (ListSchedulesResponseObject, error)
@@ -1974,15 +2052,9 @@ type StrictServerInterface interface {
 	// PreviewSchedule Preview five future cron occurrences
 	// (POST /api/v1/schedules/preview)
 	PreviewSchedule(ctx context.Context, request PreviewScheduleRequestObject) (PreviewScheduleResponseObject, error)
-	// GetProfiles Get Orpheus profiles and the creation default
-	// (GET /api/v1/schedules/profiles)
-	GetProfiles(ctx context.Context, request GetProfilesRequestObject) (GetProfilesResponseObject, error)
-	// GetSettings Get allowed environment names
+	// GetSettings Get schedule interface settings
 	// (GET /api/v1/schedules/settings)
 	GetSettings(ctx context.Context, request GetSettingsRequestObject) (GetSettingsResponseObject, error)
-	// GetTemplates Get Orpheus templates and the creation default
-	// (GET /api/v1/schedules/templates)
-	GetTemplates(ctx context.Context, request GetTemplatesRequestObject) (GetTemplatesResponseObject, error)
 	// DeleteSchedule Soft delete a schedule
 	// (DELETE /api/v1/schedules/{id})
 	DeleteSchedule(ctx context.Context, request DeleteScheduleRequestObject) (DeleteScheduleResponseObject, error)
@@ -2004,6 +2076,12 @@ type StrictServerInterface interface {
 	// ResetSession Detach the reusable session for the next occurrence
 	// (POST /api/v1/schedules/{id}/reset-session)
 	ResetSession(ctx context.Context, request ResetSessionRequestObject) (ResetSessionResponseObject, error)
+	// GetServices Get available Orpheus services
+	// (GET /api/v1/services)
+	GetServices(ctx context.Context, request GetServicesRequestObject) (GetServicesResponseObject, error)
+	// GetTemplates Get Orpheus templates and the creation default
+	// (GET /api/v1/templates)
+	GetTemplates(ctx context.Context, request GetTemplatesRequestObject) (GetTemplatesResponseObject, error)
 	// BrowserCallback Consume a signed SAML HTTP-POST response
 	// (POST /auth/callback)
 	BrowserCallback(ctx context.Context, request BrowserCallbackRequestObject) (BrowserCallbackResponseObject, error)
@@ -2074,6 +2152,30 @@ func (sh *strictHandler) GetAuthSession(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAuthSessionResponseObject); ok {
 		if err := validResponse.VisitGetAuthSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProfiles operation middleware
+func (sh *strictHandler) GetProfiles(w http.ResponseWriter, r *http.Request) {
+	var request GetProfilesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProfiles(ctx, request.(GetProfilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProfiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProfilesResponseObject); ok {
+		if err := validResponse.VisitGetProfilesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2171,30 +2273,6 @@ func (sh *strictHandler) PreviewSchedule(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// GetProfiles operation middleware
-func (sh *strictHandler) GetProfiles(w http.ResponseWriter, r *http.Request) {
-	var request GetProfilesRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetProfiles(ctx, request.(GetProfilesRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetProfiles")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetProfilesResponseObject); ok {
-		if err := validResponse.VisitGetProfilesResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // GetSettings operation middleware
 func (sh *strictHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	var request GetSettingsRequestObject
@@ -2212,30 +2290,6 @@ func (sh *strictHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetSettingsResponseObject); ok {
 		if err := validResponse.VisitGetSettingsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetTemplates operation middleware
-func (sh *strictHandler) GetTemplates(w http.ResponseWriter, r *http.Request) {
-	var request GetTemplatesRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetTemplates(ctx, request.(GetTemplatesRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetTemplates")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetTemplatesResponseObject); ok {
-		if err := validResponse.VisitGetTemplatesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2435,6 +2489,54 @@ func (sh *strictHandler) ResetSession(w http.ResponseWriter, r *http.Request, id
 	}
 }
 
+// GetServices operation middleware
+func (sh *strictHandler) GetServices(w http.ResponseWriter, r *http.Request) {
+	var request GetServicesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetServices(ctx, request.(GetServicesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetServices")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetServicesResponseObject); ok {
+		if err := validResponse.VisitGetServicesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTemplates operation middleware
+func (sh *strictHandler) GetTemplates(w http.ResponseWriter, r *http.Request) {
+	var request GetTemplatesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTemplates(ctx, request.(GetTemplatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTemplates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTemplatesResponseObject); ok {
+		if err := validResponse.VisitGetTemplatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // BrowserCallback operation middleware
 func (sh *strictHandler) BrowserCallback(w http.ResponseWriter, r *http.Request) {
 	var request BrowserCallbackRequestObject
@@ -2538,74 +2640,79 @@ func (sh *strictHandler) SamlMetadata(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"evqJFmkPtw//NwA=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

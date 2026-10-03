@@ -266,27 +266,26 @@ type CodexProfileSummary string
 
 // CreateSchedule defines model for CreateSchedule.
 type CreateSchedule struct {
-	Cron    string                    `json:"cron"`
-	EnvFrom *EnvFrom                  `json:"env_from,omitempty"`
-	Model   nullable.Nullable[string] `json:"model,omitempty"`
-	Name    string                    `json:"name"`
+	Cron  string                    `json:"cron"`
+	Model nullable.Nullable[string] `json:"model,omitempty"`
+	Name  string                    `json:"name"`
 
 	// OwnerEmail SAML non-admins must use their session email; omission fills it, explicit null is forbidden. Full-access callers may use any owner or null.
 	OwnerEmail nullable.Nullable[string] `json:"owner_email,omitempty"`
 
 	// Profile Exact Orpheus profile name; creation uses the configured default when omitted.
-	Profile     *string      `json:"profile,omitempty"`
-	Prompt      string       `json:"prompt"`
-	SessionMode *SessionMode `json:"session_mode,omitempty"`
-	Status      *Status      `json:"status,omitempty"`
+	Profile *string `json:"profile,omitempty"`
+	Prompt  string  `json:"prompt"`
+
+	// Services Explicit selection of service codes. No defaults; empty clears the selection. Unknown codes return 422 and an unavailable catalog returns 503. Unchanged selections can be preserved without the catalog; resuming validates the full selection.
+	Services    *ServiceCodes `json:"services,omitempty"`
+	SessionMode *SessionMode  `json:"session_mode,omitempty"`
+	Status      *Status       `json:"status,omitempty"`
 
 	// Template Exact Orpheus template name; creation uses the configured default when omitted.
 	Template *string `json:"template,omitempty"`
 	Timezone string  `json:"timezone"`
 }
-
-// EnvFrom defines model for EnvFrom.
-type EnvFrom = []string
 
 // NullableOccurrence defines model for NullableOccurrence.
 type NullableOccurrence struct {
@@ -405,7 +404,6 @@ type Schedule struct {
 	CreatedAt      time.Time                             `json:"created_at"`
 	Cron           string                                `json:"cron"`
 	DeletedAt      nullable.Nullable[time.Time]          `json:"deleted_at"`
-	EnvFrom        EnvFrom                               `json:"env_from"`
 	ID             openapi_types.UUID                    `json:"id"`
 	LastOccurrence nullable.Nullable[NullableOccurrence] `json:"last_occurrence"`
 	Model          nullable.Nullable[string]             `json:"model"`
@@ -414,10 +412,13 @@ type Schedule struct {
 	OwnerEmail     nullable.Nullable[string]             `json:"owner_email"`
 
 	// Profile Stored Orpheus profile name.
-	Profile     string      `json:"profile"`
-	Prompt      string      `json:"prompt"`
-	SessionMode SessionMode `json:"session_mode"`
-	Status      Status      `json:"status"`
+	Profile string `json:"profile"`
+	Prompt  string `json:"prompt"`
+
+	// Services Explicit selection of service codes. No defaults; empty clears the selection. Unknown codes return 422 and an unavailable catalog returns 503. Unchanged selections can be preserved without the catalog; resuming validates the full selection.
+	Services    ServiceCodes `json:"services"`
+	SessionMode SessionMode  `json:"session_mode"`
+	Status      Status       `json:"status"`
 
 	// Template Stored Orpheus template name.
 	Template  string    `json:"template"`
@@ -434,14 +435,30 @@ type SchedulePage struct {
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
 }
 
+// Service defines model for Service.
+type Service struct {
+	Code        string `json:"code"`
+	Description string `json:"description"`
+
+	// EnvFrom Names of worker environment variables included in this service; never values.
+	EnvFrom []string `json:"env_from"`
+	Name    string   `json:"name"`
+}
+
+// ServiceCodes Explicit selection of service codes. No defaults; empty clears the selection. Unknown codes return 422 and an unavailable catalog returns 503. Unchanged selections can be preserved without the catalog; resuming validates the full selection.
+type ServiceCodes = []string
+
+// Services defines model for Services.
+type Services struct {
+	Items []Service `json:"items"`
+}
+
 // SessionMode defines model for SessionMode.
 type SessionMode string
 
 // Settings defines model for Settings.
 type Settings struct {
-	AllowedEnvFrom EnvFrom             `json:"allowed_env_from"`
-	BaseEnvFrom    EnvFrom             `json:"base_env_from"`
-	BrowserAuth    SettingsBrowserAuth `json:"browser_auth"`
+	BrowserAuth SettingsBrowserAuth `json:"browser_auth"`
 }
 
 // SettingsBrowserAuth defines model for Settings.BrowserAuth.
@@ -465,16 +482,18 @@ type Templates struct {
 // UpdateSchedule defines model for UpdateSchedule.
 type UpdateSchedule struct {
 	Cron       *string                   `json:"cron,omitempty"`
-	EnvFrom    *EnvFrom                  `json:"env_from,omitempty"`
 	Model      nullable.Nullable[string] `json:"model,omitempty"`
 	Name       *string                   `json:"name,omitempty"`
 	OwnerEmail nullable.Nullable[string] `json:"owner_email,omitempty"`
 
 	// Profile Exact Orpheus profile name; omitted keeps the stored choice; a change starts a new reusable session.
-	Profile     *string      `json:"profile,omitempty"`
-	Prompt      *string      `json:"prompt,omitempty"`
-	SessionMode *SessionMode `json:"session_mode,omitempty"`
-	Status      *Status      `json:"status,omitempty"`
+	Profile *string `json:"profile,omitempty"`
+	Prompt  *string `json:"prompt,omitempty"`
+
+	// Services Explicit selection of service codes. No defaults; empty clears the selection. Unknown codes return 422 and an unavailable catalog returns 503. Unchanged selections can be preserved without the catalog; resuming validates the full selection.
+	Services    *ServiceCodes `json:"services,omitempty"`
+	SessionMode *SessionMode  `json:"session_mode,omitempty"`
+	Status      *Status       `json:"status,omitempty"`
 
 	// Template Exact Orpheus template name; omitted keeps the stored choice; a change starts a new reusable session.
 	Template *string `json:"template,omitempty"`
@@ -623,6 +642,11 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/auth/session (the `GetAuthSession` operationId).
 	GetAuthSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetProfiles Get Orpheus profiles and the creation default
+	//
+	// Corresponds with GET /api/v1/profiles (the `GetProfiles` operationId).
+	GetProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSchedules List schedules
 	//
 	// Corresponds with GET /api/v1/schedules (the `ListSchedules` operationId).
@@ -660,20 +684,10 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/schedules/preview (the `PreviewSchedule` operationId).
 	PreviewSchedule(ctx context.Context, body PreviewScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetProfiles Get Orpheus profiles and the creation default
-	//
-	// Corresponds with GET /api/v1/schedules/profiles (the `GetProfiles` operationId).
-	GetProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetSettings Get allowed environment names
+	// GetSettings Get schedule interface settings
 	//
 	// Corresponds with GET /api/v1/schedules/settings (the `GetSettings` operationId).
 	GetSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetTemplates Get Orpheus templates and the creation default
-	//
-	// Corresponds with GET /api/v1/schedules/templates (the `GetTemplates` operationId).
-	GetTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteSchedule Soft delete a schedule
 	//
@@ -727,6 +741,18 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
 	ResetSession(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetServices Get available Orpheus services
+	//
+	// All services are available to every caller with read access. Returns ENV names, never values.
+	//
+	// Corresponds with GET /api/v1/services (the `GetServices` operationId).
+	GetServices(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTemplates Get Orpheus templates and the creation default
+	//
+	// Corresponds with GET /api/v1/templates (the `GetTemplates` operationId).
+	GetTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// BrowserCallback Consume a signed SAML HTTP-POST response
 	//
 	// SAML mode only. Body is application/x-www-form-urlencoded with exactly one SAMLResponse and RelayState, at most 1 MiB. One-time request and browser nonce are required. Unsolicited responses are rejected.
@@ -759,6 +785,21 @@ type ClientInterface interface {
 // Corresponds with GET /api/v1/auth/session (the `GetAuthSession` operationId).
 func (c *Client) GetAuthSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAuthSessionRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetProfiles Get Orpheus profiles and the creation default
+//
+// Corresponds with GET /api/v1/profiles (the `GetProfiles` operationId).
+func (c *Client) GetProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProfilesRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -856,41 +897,11 @@ func (c *Client) PreviewSchedule(ctx context.Context, body PreviewScheduleJSONRe
 	return c.Client.Do(req)
 }
 
-// GetProfiles Get Orpheus profiles and the creation default
-//
-// Corresponds with GET /api/v1/schedules/profiles (the `GetProfiles` operationId).
-func (c *Client) GetProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetProfilesRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// GetSettings Get allowed environment names
+// GetSettings Get schedule interface settings
 //
 // Corresponds with GET /api/v1/schedules/settings (the `GetSettings` operationId).
 func (c *Client) GetSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSettingsRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// GetTemplates Get Orpheus templates and the creation default
-//
-// Corresponds with GET /api/v1/schedules/templates (the `GetTemplates` operationId).
-func (c *Client) GetTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetTemplatesRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1033,6 +1044,38 @@ func (c *Client) ResetSession(ctx context.Context, id ID, reqEditors ...RequestE
 	return c.Client.Do(req)
 }
 
+// GetServices Get available Orpheus services
+//
+// All services are available to every caller with read access. Returns ENV names, never values.
+//
+// Corresponds with GET /api/v1/services (the `GetServices` operationId).
+func (c *Client) GetServices(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServicesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTemplates Get Orpheus templates and the creation default
+//
+// Corresponds with GET /api/v1/templates (the `GetTemplates` operationId).
+func (c *Client) GetTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // BrowserCallback Consume a signed SAML HTTP-POST response
 //
 // SAML mode only. Body is application/x-www-form-urlencoded with exactly one SAMLResponse and RelayState, at most 1 MiB. One-time request and browser nonce are required. Unsolicited responses are rejected.
@@ -1109,6 +1152,33 @@ func NewGetAuthSessionRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/auth/session")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetProfilesRequest constructs an http.Request for the GetProfiles method
+func NewGetProfilesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/profiles")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1323,33 +1393,6 @@ func NewPreviewScheduleRequestWithBody(server string, contentType string, body i
 	return req, nil
 }
 
-// NewGetProfilesRequest constructs an http.Request for the GetProfiles method
-func NewGetProfilesRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/v1/schedules/profiles")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewGetSettingsRequest constructs an http.Request for the GetSettings method
 func NewGetSettingsRequest(server string) (*http.Request, error) {
 	var err error
@@ -1360,33 +1403,6 @@ func NewGetSettingsRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/schedules/settings")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetTemplatesRequest constructs an http.Request for the GetTemplates method
-func NewGetTemplatesRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/v1/schedules/templates")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1708,6 +1724,60 @@ func NewResetSessionRequest(server string, id ID) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetServicesRequest constructs an http.Request for the GetServices method
+func NewGetServicesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/services")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetTemplatesRequest constructs an http.Request for the GetTemplates method
+func NewGetTemplatesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/templates")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewBrowserCallbackRequest constructs an http.Request for the BrowserCallback method
 func NewBrowserCallbackRequest(server string) (*http.Request, error) {
 	var err error
@@ -1894,6 +1964,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/auth/session (the `GetAuthSession` operationId).
 	GetAuthSessionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAuthSessionHTTPResponse, error)
 
+	// GetProfilesWithResponse Get Orpheus profiles and the creation default
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/profiles (the `GetProfiles` operationId).
+	GetProfilesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetProfilesHTTPResponse, error)
+
 	// ListSchedulesWithResponse List schedules
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -1933,26 +2010,12 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/schedules/preview (the `PreviewSchedule` operationId).
 	PreviewScheduleWithResponse(ctx context.Context, body PreviewScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewScheduleHTTPResponse, error)
 
-	// GetProfilesWithResponse Get Orpheus profiles and the creation default
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with GET /api/v1/schedules/profiles (the `GetProfiles` operationId).
-	GetProfilesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetProfilesHTTPResponse, error)
-
-	// GetSettingsWithResponse Get allowed environment names
+	// GetSettingsWithResponse Get schedule interface settings
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/schedules/settings (the `GetSettings` operationId).
 	GetSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSettingsHTTPResponse, error)
-
-	// GetTemplatesWithResponse Get Orpheus templates and the creation default
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with GET /api/v1/schedules/templates (the `GetTemplates` operationId).
-	GetTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTemplatesHTTPResponse, error)
 
 	// DeleteScheduleWithResponse Soft delete a schedule
 	//
@@ -2017,6 +2080,22 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
 	ResetSessionWithResponse(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*ResetSessionHTTPResponse, error)
+
+	// GetServicesWithResponse Get available Orpheus services
+	//
+	// All services are available to every caller with read access. Returns ENV names, never values.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/services (the `GetServices` operationId).
+	GetServicesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServicesHTTPResponse, error)
+
+	// GetTemplatesWithResponse Get Orpheus templates and the creation default
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/templates (the `GetTemplates` operationId).
+	GetTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTemplatesHTTPResponse, error)
 
 	// BrowserCallbackWithResponse Consume a signed SAML HTTP-POST response
 	//
@@ -2095,6 +2174,54 @@ func (r GetAuthSessionHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetAuthSessionHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetProfilesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Profiles
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetProfilesHTTPResponse) GetJSON200() *Profiles {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetProfilesHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetProfilesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProfilesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProfilesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetProfilesHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2245,54 +2372,6 @@ func (r PreviewScheduleHTTPResponse) ContentType() string {
 	return ""
 }
 
-type GetProfilesHTTPResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *Profiles
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Problem
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetProfilesHTTPResponse) GetJSON200() *Profiles {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r GetProfilesHTTPResponse) GetJSONDefault() *Problem {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r GetProfilesHTTPResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r GetProfilesHTTPResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetProfilesHTTPResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetProfilesHTTPResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type GetSettingsHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2335,54 +2414,6 @@ func (r GetSettingsHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetSettingsHTTPResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type GetTemplatesHTTPResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *Templates
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *Problem
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetTemplatesHTTPResponse) GetJSON200() *Templates {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r GetTemplatesHTTPResponse) GetJSONDefault() *Problem {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r GetTemplatesHTTPResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r GetTemplatesHTTPResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetTemplatesHTTPResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetTemplatesHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2718,6 +2749,102 @@ func (r ResetSessionHTTPResponse) ContentType() string {
 	return ""
 }
 
+type GetServicesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Services
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetServicesHTTPResponse) GetJSON200() *Services {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetServicesHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetServicesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServicesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServicesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetServicesHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetTemplatesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Templates
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTemplatesHTTPResponse) GetJSON200() *Templates {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetTemplatesHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTemplatesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTemplatesHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // BrowserCallbackHTTPResponse303Headers the declared response headers of an HTTP 303 response for BrowserCallback
 type BrowserCallbackHTTPResponse303Headers struct {
 	Location *string
@@ -2909,6 +3036,19 @@ func (c *ClientWithResponses) GetAuthSessionWithResponse(ctx context.Context, re
 	return ParseGetAuthSessionHTTPResponse(rsp)
 }
 
+// GetProfilesWithResponse Get Orpheus profiles and the creation default
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/profiles (the `GetProfiles` operationId).
+func (c *ClientWithResponses) GetProfilesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetProfilesHTTPResponse, error) {
+	rsp, err := c.GetProfiles(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProfilesHTTPResponse(rsp)
+}
+
 // ListSchedulesWithResponse List schedules
 //
 // Returns a wrapper object for the known response body format(s).
@@ -2978,20 +3118,7 @@ func (c *ClientWithResponses) PreviewScheduleWithResponse(ctx context.Context, b
 	return ParsePreviewScheduleHTTPResponse(rsp)
 }
 
-// GetProfilesWithResponse Get Orpheus profiles and the creation default
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with GET /api/v1/schedules/profiles (the `GetProfiles` operationId).
-func (c *ClientWithResponses) GetProfilesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetProfilesHTTPResponse, error) {
-	rsp, err := c.GetProfiles(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetProfilesHTTPResponse(rsp)
-}
-
-// GetSettingsWithResponse Get allowed environment names
+// GetSettingsWithResponse Get schedule interface settings
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3002,19 +3129,6 @@ func (c *ClientWithResponses) GetSettingsWithResponse(ctx context.Context, reqEd
 		return nil, err
 	}
 	return ParseGetSettingsHTTPResponse(rsp)
-}
-
-// GetTemplatesWithResponse Get Orpheus templates and the creation default
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with GET /api/v1/schedules/templates (the `GetTemplates` operationId).
-func (c *ClientWithResponses) GetTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTemplatesHTTPResponse, error) {
-	rsp, err := c.GetTemplates(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetTemplatesHTTPResponse(rsp)
 }
 
 // DeleteScheduleWithResponse Soft delete a schedule
@@ -3129,6 +3243,34 @@ func (c *ClientWithResponses) ResetSessionWithResponse(ctx context.Context, id I
 	return ParseResetSessionHTTPResponse(rsp)
 }
 
+// GetServicesWithResponse Get available Orpheus services
+//
+// All services are available to every caller with read access. Returns ENV names, never values.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/services (the `GetServices` operationId).
+func (c *ClientWithResponses) GetServicesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServicesHTTPResponse, error) {
+	rsp, err := c.GetServices(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServicesHTTPResponse(rsp)
+}
+
+// GetTemplatesWithResponse Get Orpheus templates and the creation default
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/templates (the `GetTemplates` operationId).
+func (c *ClientWithResponses) GetTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTemplatesHTTPResponse, error) {
+	rsp, err := c.GetTemplates(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesHTTPResponse(rsp)
+}
+
 // BrowserCallbackWithResponse Consume a signed SAML HTTP-POST response
 //
 // SAML mode only. Body is application/x-www-form-urlencoded with exactly one SAMLResponse and RelayState, at most 1 MiB. One-time request and browser nonce are required. Unsolicited responses are rejected.
@@ -3203,6 +3345,39 @@ func ParseGetAuthSessionHTTPResponse(rsp *http.Response) (*GetAuthSessionHTTPRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AuthSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProfilesHTTPResponse parses an HTTP response from a GetProfilesWithResponse call
+func ParseGetProfilesHTTPResponse(rsp *http.Response) (*GetProfilesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProfilesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Profiles
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -3319,39 +3494,6 @@ func ParsePreviewScheduleHTTPResponse(rsp *http.Response) (*PreviewScheduleHTTPR
 	return response, nil
 }
 
-// ParseGetProfilesHTTPResponse parses an HTTP response from a GetProfilesWithResponse call
-func ParseGetProfilesHTTPResponse(rsp *http.Response) (*GetProfilesHTTPResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetProfilesHTTPResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Profiles
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Problem
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseGetSettingsHTTPResponse parses an HTTP response from a GetSettingsWithResponse call
 func ParseGetSettingsHTTPResponse(rsp *http.Response) (*GetSettingsHTTPResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3368,39 +3510,6 @@ func ParseGetSettingsHTTPResponse(rsp *http.Response) (*GetSettingsHTTPResponse,
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Settings
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Problem
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetTemplatesHTTPResponse parses an HTTP response from a GetTemplatesWithResponse call
-func ParseGetTemplatesHTTPResponse(rsp *http.Response) (*GetTemplatesHTTPResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetTemplatesHTTPResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Templates
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -3628,6 +3737,72 @@ func ParseResetSessionHTTPResponse(rsp *http.Response) (*ResetSessionHTTPRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Schedule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServicesHTTPResponse parses an HTTP response from a GetServicesWithResponse call
+func ParseGetServicesHTTPResponse(rsp *http.Response) (*GetServicesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServicesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Services
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTemplatesHTTPResponse parses an HTTP response from a GetTemplatesWithResponse call
+func ParseGetTemplatesHTTPResponse(rsp *http.Response) (*GetTemplatesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Templates
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

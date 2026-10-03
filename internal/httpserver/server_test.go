@@ -30,13 +30,12 @@ import (
 	"github.com/orpheus-agents/orpheus-space/internal/testutil"
 )
 
-const createBody = `{"name":"Report","prompt":"Summarize incidents","cron":"0 10 * * 1-5","timezone":"Europe/Moscow","owner_email":" ALICE@example.com ","model":"custom","env_from":["A"]}`
+const createBody = `{"name":"Report","prompt":"Summarize incidents","cron":"0 10 * * 1-5","timezone":"Europe/Moscow","owner_email":" ALICE@example.com ","model":"custom","services":["a"]}`
 
 func fixture(t *testing.T, mode string) http.Handler {
 	t.Helper()
-	cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: mode, PublicURL: "http://space.test"}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A", "B"}, MaxRequestBytes: 4096}
-	cfg.Execution.Sandbox.EnvFrom = []string{"A"}
-	s := &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv}
+	cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: mode, PublicURL: "http://space.test"}, PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
+	s := &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t)}
 	h, err := Handler(&Server{Core: testutil.Catalog{}, Store: s, Config: cfg, Now: func() time.Time { return time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) }})
 	if err != nil {
 		t.Fatal(err)
@@ -96,13 +95,13 @@ func TestCRUDAndGeneratedClient(t *testing.T) {
 	}
 	request(t, h, "POST", "/api/v1/schedules", strings.Replace(createBody, "Report", "Different", 1), headers, 409)
 	path := "/api/v1/schedules/" + created.ID.String()
-	request(t, h, "PATCH", path, `{"model":null,"owner_email":null,"env_from":[],"status":"paused"}`, headers, 200)
+	request(t, h, "PATCH", path, `{"model":null,"owner_email":null,"services":[],"status":"paused"}`, headers, 200)
 	got := request(t, h, "GET", path, "", headers, 200)
 	var updated schedule.Schedule
 	if err := json.Unmarshal(got.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
-	if updated.Model != nil || updated.OwnerEmail != nil || len(updated.EnvFrom) != 0 || updated.NextRunAt != nil {
+	if updated.Model != nil || updated.OwnerEmail != nil || len(updated.Services) != 0 || updated.NextRunAt != nil {
 		t.Fatal(updated)
 	}
 	request(t, h, "PATCH", path, `{"status":"active"}`, headers, 200)
@@ -172,7 +171,7 @@ func TestInvalidInputsDoNotReachStorage(t *testing.T) {
 		{"POST", "/api/v1/schedules", strings.Replace(createBody, `"name":"Report"`, `"name":"Report","id":"fake"`, 1), 422},
 		{"POST", "/api/v1/schedules", strings.Replace(createBody, `"name":"Report"`, `"name":"Report","name":"Other"`, 1), 422},
 		{"PATCH", "/api/v1/schedules/" + uuid.NewString(), `{"status":null}`, 422},
-		{"PATCH", "/api/v1/schedules/" + uuid.NewString(), `{"env_from":null}`, 422},
+		{"PATCH", "/api/v1/schedules/" + uuid.NewString(), `{"services":null}`, 422},
 		{"GET", "/api/v1/schedules?status=bad", "", 422},
 		{"GET", "/api/v1/schedules?limit=201", "", 422},
 		{"GET", "/api/v1/schedules?limit=0", "", 422},
@@ -212,7 +211,7 @@ func TestValidationDetails(t *testing.T) {
 		{"length", "POST", "/api/v1/schedules", strings.Replace(createBody, "Report", strings.Repeat("x", 201), 1), "body", "name", "invalid_value"},
 		{"empty", "POST", "/api/v1/schedules", strings.Replace(createBody, "Summarize incidents", "", 1), "body", "prompt", "invalid_value"},
 		{"enum", "PATCH", "/api/v1/schedules/" + uuid.NewString(), `{"status":"bad"}`, "body", "status", "invalid_value"},
-		{"pattern", "POST", "/api/v1/schedules", strings.Replace(createBody, `["A"]`, `["A=B"]`, 1), "body", "env_from", "invalid_value"},
+		{"pattern", "POST", "/api/v1/schedules", strings.Replace(createBody, `["a"]`, `["A=B"]`, 1), "body", "services", "invalid_value"},
 		{"limit", "GET", "/api/v1/schedules?limit=201", "", "query", "limit", "invalid_value"},
 		{"status", "GET", "/api/v1/schedules?status=bad", "", "query", "status", "invalid_value"},
 		{"email", "GET", "/api/v1/schedules?owner_email=bad", "", "query", "owner_email", "invalid_value"},
@@ -326,8 +325,8 @@ func TestHistoryAndExplicitResult(t *testing.T) {
 func TestScheduleURLs(t *testing.T) {
 	for _, origin := range []string{"https://space.example.com", "http://localhost:8080", "http://[::1]:8080", ""} {
 		t.Run(origin, func(t *testing.T) {
-			cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: "api_only", PublicURL: origin}, PublicAPIKeys: []string{"test-key"}, AllowedEnv: []string{"A"}, MaxRequestBytes: 4096}
-			s := &Server{Core: testutil.Catalog{}, Store: &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv}, Config: cfg}
+			cfg := config.Config{Execution: testutil.Execution(), Auth: config.BrowserAuth{Mode: "api_only", PublicURL: origin}, PublicAPIKeys: []string{"test-key"}, MaxRequestBytes: 4096}
+			s := &Server{Core: testutil.Catalog{}, Store: &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t)}, Config: cfg}
 			h, err := Handler(s)
 			if err != nil {
 				t.Fatal(err)

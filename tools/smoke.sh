@@ -16,7 +16,6 @@ cat > "$smoke_tmp/app.env" <<'ENV'
 DATABASE_URL=postgres://orpheus:orpheus@test-db:5432/orpheus_space_test
 ORPHEUS_BROWSER_AUTH=api_only
 PUBLIC_API_KEYS=["fixture-only-key"]
-HARNESS_ENV_ALLOWLIST=["MATTERMOST_BOT_TOKEN"]
 ORPHEUS_CONFIG_FILE=/etc/space/space.toml
 ORPHEUS_BASE_URL=http://unused-core:8000
 ORPHEUS_API_KEY=fixture-core-key

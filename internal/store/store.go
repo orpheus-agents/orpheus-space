@@ -22,7 +22,6 @@ import (
 
 type Store struct {
 	Pool            *pgxpool.Pool
-	AllowedEnv      []string
 	Now             func() time.Time
 	DefaultProfile  string
 	DefaultTemplate string
@@ -36,7 +35,7 @@ func (s *Store) now() time.Time {
 	return time.Now().UTC().Truncate(time.Microsecond)
 }
 func record(row db.Schedule) schedule.Schedule {
-	return schedule.Schedule{Profile: row.Profile, Template: row.Template, Name: row.Name, Prompt: row.Prompt, Cron: row.Cron, Timezone: row.Timezone, Status: row.Status, Model: row.Model, SessionMode: row.SessionMode, OwnerEmail: row.OwnerEmail, EnvFrom: row.EnvFrom, ID: row.ID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, NextRunAt: row.NextRunAt, DeletedAt: row.DeletedAt}
+	return schedule.Schedule{Profile: row.Profile, Template: row.Template, Name: row.Name, Prompt: row.Prompt, Cron: row.Cron, Timezone: row.Timezone, Status: row.Status, Model: row.Model, SessionMode: row.SessionMode, OwnerEmail: row.OwnerEmail, Services: row.Services, ID: row.ID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, NextRunAt: row.NextRunAt, DeletedAt: row.DeletedAt}
 }
 func missing(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -58,7 +57,7 @@ func (s *Store) Create(ctx context.Context, actor access.Principal, in schedule.
 		return schedule.Schedule{}, err
 	}
 	now := s.now()
-	in, err := schedule.Normalize(in, s.AllowedEnv, now)
+	in, err := schedule.Normalize(in, now)
 	if err != nil {
 		return schedule.Schedule{}, err
 	}
@@ -86,7 +85,7 @@ func (s *Store) Create(ctx context.Context, actor access.Principal, in schedule.
 	if strings.TrimSpace(in.Template) == "" {
 		return schedule.Schedule{}, schedule.Invalid("template")
 	}
-	if err := s.validateSelection(ctx, in.Profile, in.Template); err != nil {
+	if err := s.validateSelection(ctx, in.Profile, in.Template, in.Services); err != nil {
 		return schedule.Schedule{}, err
 	}
 	tx, err := s.Pool.Begin(ctx)
@@ -116,7 +115,7 @@ func (s *Store) Create(ctx context.Context, actor access.Principal, in schedule.
 		}
 		next = &value
 	}
-	row, err := q.CreateSchedule(ctx, db.CreateScheduleParams{ID: uuid.New(), Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, Timezone: in.Timezone, Status: in.Status, Model: in.Model, SessionMode: in.SessionMode, OwnerEmail: in.OwnerEmail, EnvFrom: in.EnvFrom, CreatedAt: now, NextRunAt: next, Profile: in.Profile, Template: in.Template})
+	row, err := q.CreateSchedule(ctx, db.CreateScheduleParams{ID: uuid.New(), Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, Timezone: in.Timezone, Status: in.Status, Model: in.Model, SessionMode: in.SessionMode, OwnerEmail: in.OwnerEmail, Services: in.Services, CreatedAt: now, NextRunAt: next, Profile: in.Profile, Template: in.Template})
 	if err != nil {
 		return schedule.Schedule{}, err
 	}
@@ -154,6 +153,14 @@ func (s *Store) Update(ctx context.Context, actor access.Principal, id uuid.UUID
 		if err := actor.RequireOwner(in.OwnerEmail); err != nil {
 			return schedule.Schedule{}, err
 		}
+		in.Services, err = schedule.ServiceCodes(in.Services)
+		if err != nil {
+			return schedule.Schedule{}, err
+		}
+		var services []string
+		if !slices.Equal(in.Services, row.Services) || row.Status == "paused" && in.Status == "active" {
+			services = in.Services
+		}
 		profile, template := "", ""
 		if in.Profile != row.Profile {
 			profile = in.Profile
@@ -167,7 +174,7 @@ func (s *Store) Update(ctx context.Context, actor access.Principal, id uuid.UUID
 				return schedule.Schedule{}, schedule.Invalid("template")
 			}
 		}
-		if err = s.validateSelection(ctx, profile, template); err != nil {
+		if err = s.validateSelection(ctx, profile, template, services); err != nil {
 			return schedule.Schedule{}, err
 		}
 		out, err := s.update(ctx, actor, id, patch, row)
@@ -197,7 +204,7 @@ func (s *Store) update(ctx context.Context, actor access.Principal, id uuid.UUID
 	if row.DeletedAt != nil {
 		return schedule.Schedule{}, schedule.Fail(409, "schedule_deleted", "Deleted schedules cannot be edited.")
 	}
-	if row.Profile != checked.Profile || row.Template != checked.Template {
+	if row.Profile != checked.Profile || row.Template != checked.Template || row.Status != checked.Status || !slices.Equal(row.Services, checked.Services) {
 		return schedule.Schedule{}, errSelectionChanged
 	}
 	current := record(row)
@@ -206,7 +213,7 @@ func (s *Store) update(ctx context.Context, actor access.Principal, id uuid.UUID
 		return schedule.Schedule{}, err
 	}
 	now := s.now()
-	in, err = schedule.Normalize(in, s.AllowedEnv, now)
+	in, err = schedule.Normalize(in, now)
 	if err != nil {
 		return schedule.Schedule{}, err
 	}
@@ -225,7 +232,7 @@ func (s *Store) update(ctx context.Context, actor access.Principal, id uuid.UUID
 	if in.Status == "paused" {
 		next = nil
 	}
-	if in.Profile != current.Profile || in.Template != current.Template || in.SessionMode != current.SessionMode || !slices.Equal(in.EnvFrom, current.EnvFrom) || !equalString(in.Model, current.Model) {
+	if in.Profile != current.Profile || in.Template != current.Template || in.SessionMode != current.SessionMode || !slices.Equal(in.Services, current.Services) || !equalString(in.Model, current.Model) {
 		if err = q.ClearReusableSession(ctx, id); err != nil {
 			return schedule.Schedule{}, err
 		}
@@ -235,7 +242,7 @@ func (s *Store) update(ctx context.Context, actor access.Principal, id uuid.UUID
 			return schedule.Schedule{}, err
 		}
 	}
-	row, err = q.UpdateSchedule(ctx, db.UpdateScheduleParams{ID: id, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, Timezone: in.Timezone, Status: in.Status, Model: in.Model, SessionMode: in.SessionMode, OwnerEmail: in.OwnerEmail, EnvFrom: in.EnvFrom, UpdatedAt: now, NextRunAt: next, CronStartedAt: start, Profile: in.Profile, Template: in.Template})
+	row, err = q.UpdateSchedule(ctx, db.UpdateScheduleParams{ID: id, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, Timezone: in.Timezone, Status: in.Status, Model: in.Model, SessionMode: in.SessionMode, OwnerEmail: in.OwnerEmail, Services: in.Services, UpdatedAt: now, NextRunAt: next, CronStartedAt: start, Profile: in.Profile, Template: in.Template})
 	if err != nil {
 		return schedule.Schedule{}, err
 	}

@@ -28,3 +28,11 @@ func Execution() config.Execution {
 	c.Sandbox.Template = "sandbox"
 	return c
 }
+
+func (Catalog) Services(context.Context) (coreapi.Services, error) {
+	return coreapi.Services{Items: []coreapi.Service{
+		{Code: "a", Name: "Service A", Description: "First test service", EnvFrom: []string{"A"}},
+		{Code: "b", Name: "Service B", Description: "Second test service", EnvFrom: []string{"B"}},
+		{Code: "orpheus-space", Name: "Orpheus Space", Description: "Manage schedules", EnvFrom: []string{"ORPHEUS_SPACE_API_KEY"}},
+	}}, nil
+}

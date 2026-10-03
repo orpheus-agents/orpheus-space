@@ -25,8 +25,8 @@ type Input struct {
 	Model       *string  `json:"model"`
 	SessionMode string   `json:"session_mode"`
 	OwnerEmail  *string  `json:"owner_email"`
-	EnvFrom     []string `json:"env_from"`
-	// Omitted selections stay out of the create fingerprint, including legacy keys.
+	Services    []string `json:"services"`
+	// Omitted profile/template selections stay out of the create fingerprint.
 	Profile  string `json:"profile,omitempty"`
 	Template string `json:"template,omitempty"`
 }
@@ -70,9 +70,9 @@ func InvalidAt(path ...string) *Error {
 	err.Problem.Details = []Detail{{Path: path, Code: "invalid_value"}}
 	return err
 }
-func Defaults() Input { return Input{Status: "active", SessionMode: "new", EnvFrom: []string{}} }
+func Defaults() Input { return Input{Status: "active", SessionMode: "new", Services: []string{}} }
 
-func Normalize(in Input, allowed []string, now time.Time) (Input, error) {
+func Normalize(in Input, now time.Time) (Input, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Cron = strings.Join(strings.Fields(in.Cron), " ")
 	if in.Name == "" || utf8.RuneCountInString(in.Name) > 200 {
@@ -101,25 +101,25 @@ func Normalize(in Input, allowed []string, now time.Time) (Input, error) {
 		}
 		in.OwnerEmail = &value
 	}
-	env, err := EnvNames(in.EnvFrom, allowed)
+	services, err := ServiceCodes(in.Services)
 	if err != nil {
 		return in, err
 	}
-	in.EnvFrom = env
+	in.Services = services
 	if _, err = Next(in.Cron, in.Timezone, now); err != nil {
 		return in, err
 	}
 	return in, nil
 }
 
-var envPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var servicePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 
-func EnvNames(names, allowed []string) ([]string, error) {
+func ServiceCodes(names []string) ([]string, error) {
 	result := append([]string{}, names...)
 	slices.Sort(result)
 	for i, name := range result {
-		if !envPattern.MatchString(name) || i > 0 && result[i-1] == name || allowed != nil && !slices.Contains(allowed, name) {
-			return nil, Invalid("env_from")
+		if !servicePattern.MatchString(name) || i > 0 && result[i-1] == name {
+			return nil, Invalid("services")
 		}
 	}
 	return result, nil
@@ -162,7 +162,7 @@ func Patch(current Input, raw []byte) (Input, error) {
 	for field, value := range fields {
 		switch field {
 		case "model", "owner_email":
-		case "name", "prompt", "cron", "timezone", "status", "session_mode", "env_from", "profile", "template":
+		case "name", "prompt", "cron", "timezone", "status", "session_mode", "services", "profile", "template":
 			if string(value) == "null" {
 				return current, Invalid(field)
 			}
@@ -176,7 +176,7 @@ func Patch(current Input, raw []byte) (Input, error) {
 	if current.OwnerEmail != nil {
 		current.OwnerEmail = new(*current.OwnerEmail)
 	}
-	current.EnvFrom = slices.Clone(current.EnvFrom)
+	current.Services = slices.Clone(current.Services)
 	if err := json.Unmarshal(raw, &current); err != nil {
 		return current, Invalid("body")
 	}

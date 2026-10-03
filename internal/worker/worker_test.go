@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -112,12 +113,11 @@ func (f *coreFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func fixture(t *testing.T) (*Worker, *coreFixture, *time.Time, schedule.Schedule) {
 	t.Helper()
 	now := new(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC))
-	cfg := config.Config{AllowedEnv: []string{"A", "B"}}
+	cfg := config.Config{}
 	cfg.Execution.Agent.Profile = "default"
 	cfg.Execution.Sandbox.Template = "sandbox"
-	cfg.Execution.Sandbox.EnvFrom = []string{"A"}
 	cfg.Execution.Limits.RunTimeoutSeconds = 3600
-	storage := &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t), AllowedEnv: cfg.AllowedEnv, Now: func() time.Time { return *now }}
+	storage := &store.Store{DefaultProfile: "default", DefaultTemplate: "sandbox", Catalog: testutil.Catalog{}, Pool: testutil.Database(t), Now: func() time.Time { return *now }}
 	f := &coreFixture{accepted: map[string]coreapi.Accepted{}, runs: map[uuid.UUID]coreapi.Run{}}
 	server := httptest.NewServer(f)
 	t.Cleanup(server.Close)
@@ -206,7 +206,7 @@ func TestReuseResetAndConfigurationChange(t *testing.T) {
 	complete(f, now.Add(time.Second))
 	*now = now.Add(10 * time.Second)
 	tick(t, w, f)
-	if _, err := w.Store.Update(t.Context(), access.Principal{ManageAll: true}, task.ID, []byte(`{"model":"other","env_from":["B"]}`)); err != nil {
+	if _, err := w.Store.Update(t.Context(), access.Principal{ManageAll: true}, task.ID, []byte(`{"model":"other","services":["b"]}`)); err != nil {
 		t.Fatal(err)
 	}
 	*now = now.Add(50 * time.Second)
@@ -214,7 +214,7 @@ func TestReuseResetAndConfigurationChange(t *testing.T) {
 	if len(f.requests) != 4 || f.requests[3].path != "/api/v1/sessions" {
 		t.Fatal(f.requests)
 	}
-	if err := json.Unmarshal(f.requests[3].body, &request); err != nil || request.Configuration.Agent.Model == nil || *request.Configuration.Agent.Model != "other" || len(*request.Configuration.Sandbox.EnvFrom) != 2 {
+	if err := json.Unmarshal(f.requests[3].body, &request); err != nil || request.Configuration.Agent.Model == nil || *request.Configuration.Agent.Model != "other" || request.Configuration.Sandbox.Services == nil || !slices.Equal(*request.Configuration.Sandbox.Services, []string{"b"}) {
 		t.Fatal(request, err)
 	}
 	got, err := w.Store.Get(t.Context(), task.ID)
@@ -230,7 +230,7 @@ func TestLostResponseRestartAndPause(t *testing.T) {
 	if rows := history(t, w, task.ID); len(rows) != 1 || rows[0].State != "dispatching" {
 		t.Fatal(rows)
 	}
-	if _, err := w.Store.Update(t.Context(), access.Principal{ManageAll: true}, task.ID, []byte(`{"status":"paused","prompt":"new prompt","model":"new","profile":"other","template":"other"}`)); err != nil {
+	if _, err := w.Store.Update(t.Context(), access.Principal{ManageAll: true}, task.ID, []byte(`{"status":"paused","prompt":"new prompt","model":"new","profile":"other","template":"other","services":["a"]}`)); err != nil {
 		t.Fatal(err)
 	}
 	replacement := *w
@@ -312,7 +312,7 @@ func TestDispatchFailures(t *testing.T) {
 		status int
 		lost   bool
 		state  string
-	}{{"unknown_profile", 422, false, "failed"}, {"unknown_template", 422, false, "failed"}, {"capacity_exhausted", 503, false, "dispatching"}, {"validation_error", 422, false, "failed"}, {"token_limit_exceeded", 409, false, "failed"}, {"session_unavailable", 409, false, "failed"}, {"unauthorized", 401, true, "dispatching"}, {"idempotency_conflict", 409, false, "dispatching"}} {
+	}{{"unknown_service", 422, false, "failed"}, {"unknown_service", 422, true, "dispatching"}, {"unknown_profile", 422, false, "failed"}, {"unknown_template", 422, false, "failed"}, {"capacity_exhausted", 503, false, "dispatching"}, {"validation_error", 422, false, "failed"}, {"token_limit_exceeded", 409, false, "failed"}, {"session_unavailable", 409, false, "failed"}, {"unauthorized", 401, true, "dispatching"}, {"idempotency_conflict", 409, false, "dispatching"}} {
 		t.Run(tc.code, func(t *testing.T) {
 			w, f, now, task := fixture(t)
 			*now = now.Add(time.Minute)
@@ -379,11 +379,10 @@ func TestUncertainRequestPersistsBeforeNetwork(t *testing.T) {
 }
 
 func TestSnapshotFingerprintAndNewMode(t *testing.T) {
-	cfg := config.Config{AllowedEnv: []string{"A", "B"}}
+	cfg := config.Config{}
 	cfg.Execution.Agent.Profile = "default"
 	cfg.Execution.Sandbox.Template = "template"
-	cfg.Execution.Sandbox.EnvFrom = []string{"A"}
-	row := db.Schedule{Profile: "default", Template: "template", ID: uuid.New(), Prompt: "first", Timezone: "UTC", SessionMode: "reuse", EnvFrom: []string{"A", "B"}}
+	row := db.Schedule{Profile: "default", Template: "template", ID: uuid.New(), Prompt: "first", Timezone: "UTC", SessionMode: "reuse", Services: []string{"a", "b"}}
 	occ := db.ScheduleOccurrence{ID: uuid.New(), ScheduledAt: time.Now()}
 	now := time.Now()
 	first, err := Builder(cfg)(row, occ, nil, now)
@@ -605,5 +604,33 @@ func TestLastSuccessSurvivesFailureAndRetry(t *testing.T) {
 	tick(t, &restarted, f)
 	if len(f.requests) != 4 || string(f.requests[2].body) != string(f.requests[3].body) || f.requests[2].key != f.requests[3].key {
 		t.Fatal("retry changed snapshot", f.requests)
+	}
+}
+
+func TestFrozenLegacyEnvironmentRequestSurvivesServiceSelection(t *testing.T) {
+	w, f, now, task := fixture(t)
+	modern := w.Build
+	legacyBody := []byte(`{ "configuration": {"agent":{"profile":"default"},"sandbox":{"template":"sandbox","env_from":["OLD_API_KEY"]}},"messages":[{"text":"old prompt"}] }`)
+	w.Build = func(db.Schedule, db.ScheduleOccurrence, *db.ScheduleOccurrence, time.Time) (store.Snapshot, error) {
+		return store.Snapshot{Path: "/api/v1/sessions", Body: legacyBody, Fingerprint: "old-fingerprint", Reusable: true}, nil
+	}
+	f.lose = true
+	*now = now.Add(time.Minute)
+	tick(t, w, f)
+	if len(f.requests) != 1 {
+		t.Fatal(f.requests)
+	}
+	w.Build = modern
+	if _, err := w.Store.Update(t.Context(), access.Principal{ManageAll: true}, task.ID, []byte(`{"services":["a"],"status":"paused"}`)); err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(time.Minute)
+	tick(t, w, f)
+	if len(f.requests) != 2 || string(f.requests[1].body) != string(legacyBody) || f.requests[0].key != f.requests[1].key || len(f.accepted) != 1 {
+		t.Fatal(f.requests)
+	}
+	rows := history(t, w, task.ID)
+	if len(rows) != 1 || rows[0].State != "accepted" {
+		t.Fatal(rows)
 	}
 }

@@ -3,7 +3,8 @@ name: orpheus-space
 description: Manage scheduled Orpheus tasks through the CLI, including creation, updates, pauses, history, and results. Use when a user asks to configure or inspect recurring agent work.
 ---
 
-Use `orpheus-space schedule`. The endpoint and API key are provided through ENV.
+Use `orpheus-space schedule` for tasks and the root `profiles`, `templates` and
+`services` commands for available choices. The endpoint and API key are provided through ENV.
 Before making changes, read the [schedule rules](references/schedules.md).
 For commands and JSON input, read the [CLI reference](references/cli.md).
 

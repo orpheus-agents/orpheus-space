@@ -40,7 +40,6 @@ type Schedule struct {
 	Model               *string    `json:"model"`
 	SessionMode         string     `json:"session_mode"`
 	OwnerEmail          *string    `json:"owner_email"`
-	EnvFrom             []string   `json:"env_from"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 	NextRunAt           *time.Time `json:"next_run_at"`
@@ -50,6 +49,7 @@ type Schedule struct {
 	ReusableFingerprint *string    `json:"reusable_fingerprint"`
 	Profile             string     `json:"profile"`
 	Template            string     `json:"template"`
+	Services            []string   `json:"services"`
 }
 
 type ScheduleCreateKey struct {

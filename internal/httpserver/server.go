@@ -136,7 +136,7 @@ func (s *Server) DeleteSchedule(ctx context.Context, r api.DeleteScheduleRequest
 	return api.DeleteSchedule204Response{}, nil
 }
 func (s *Server) GetSettings(context.Context, api.GetSettingsRequestObject) (api.GetSettingsResponseObject, error) {
-	return api.GetSettings200JSONResponse{BaseEnvFrom: append([]string{}, s.Config.Execution.Sandbox.EnvFrom...), AllowedEnvFrom: append([]string{}, s.Config.AllowedEnv...), BrowserAuth: api.SettingsBrowserAuth(s.Config.Auth.Mode)}, nil
+	return api.GetSettings200JSONResponse{BrowserAuth: api.SettingsBrowserAuth(s.Config.Auth.Mode)}, nil
 }
 func (s *Server) PreviewSchedule(_ context.Context, r api.PreviewScheduleRequestObject) (api.PreviewScheduleResponseObject, error) {
 	if r.Body == nil {
@@ -247,4 +247,15 @@ func (s *Server) GetTemplates(ctx context.Context, _ api.GetTemplatesRequestObje
 	return response[api.GetTemplates200JSONResponse](struct {
 		Items []item `json:"items"`
 	}{items})
+}
+
+func (s *Server) GetServices(ctx context.Context, _ api.GetServicesRequestObject) (api.GetServicesResponseObject, error) {
+	if s.Core == nil {
+		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
+	}
+	services, err := s.Core.Services(ctx)
+	if err != nil {
+		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
+	}
+	return response[api.GetServices200JSONResponse](services)
 }
