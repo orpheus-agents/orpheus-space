@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/orpheus-agents/orpheus-space/internal/access"
 	"github.com/orpheus-agents/orpheus-space/internal/schedule"
 	"github.com/orpheus-agents/orpheus-space/internal/store/db"
 )
@@ -52,7 +53,10 @@ func (s *Store) Get(ctx context.Context, id uuid.UUID) (schedule.Schedule, error
 	err = summary(ctx, db.New(s.Pool), &out)
 	return out, err
 }
-func (s *Store) Create(ctx context.Context, in schedule.Input, key *uuid.UUID) (schedule.Schedule, error) {
+func (s *Store) Create(ctx context.Context, actor access.Principal, in schedule.Input, key *uuid.UUID) (schedule.Schedule, error) {
+	if err := actor.RequireOwner(in.OwnerEmail); err != nil {
+		return schedule.Schedule{}, err
+	}
 	now := s.now()
 	in, err := schedule.Normalize(in, s.AllowedEnv, now)
 	if err != nil {
@@ -131,17 +135,23 @@ func (s *Store) Create(ctx context.Context, in schedule.Input, key *uuid.UUID) (
 	}
 	return result, nil
 }
-func (s *Store) Update(ctx context.Context, id uuid.UUID, patch []byte) (schedule.Schedule, error) {
+func (s *Store) Update(ctx context.Context, actor access.Principal, id uuid.UUID, patch []byte) (schedule.Schedule, error) {
 	for {
 		row, err := db.New(s.Pool).GetSchedule(ctx, id)
 		if err != nil {
 			return schedule.Schedule{}, missing(err)
+		}
+		if err := actor.RequireManage(row.OwnerEmail); err != nil {
+			return schedule.Schedule{}, err
 		}
 		if row.DeletedAt != nil {
 			return schedule.Schedule{}, schedule.Fail(409, "schedule_deleted", "Deleted schedules cannot be edited.")
 		}
 		in, err := schedule.Patch(record(row).Input, patch)
 		if err != nil {
+			return schedule.Schedule{}, err
+		}
+		if err := actor.RequireOwner(in.OwnerEmail); err != nil {
 			return schedule.Schedule{}, err
 		}
 		profile, template := "", ""
@@ -160,7 +170,7 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, patch []byte) (schedul
 		if err = s.validateSelection(ctx, profile, template); err != nil {
 			return schedule.Schedule{}, err
 		}
-		out, err := s.update(ctx, id, patch, row)
+		out, err := s.update(ctx, actor, id, patch, row)
 		if errors.Is(err, errSelectionChanged) {
 			continue
 		}
@@ -170,7 +180,7 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, patch []byte) (schedul
 
 var errSelectionChanged = errors.New("schedule selection changed during validation")
 
-func (s *Store) update(ctx context.Context, id uuid.UUID, patch []byte, checked db.Schedule) (schedule.Schedule, error) {
+func (s *Store) update(ctx context.Context, actor access.Principal, id uuid.UUID, patch []byte, checked db.Schedule) (schedule.Schedule, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return schedule.Schedule{}, err
@@ -180,6 +190,9 @@ func (s *Store) update(ctx context.Context, id uuid.UUID, patch []byte, checked 
 	row, err := q.LockSchedule(ctx, id)
 	if err != nil {
 		return schedule.Schedule{}, missing(err)
+	}
+	if err := actor.RequireManage(row.OwnerEmail); err != nil {
+		return schedule.Schedule{}, err
 	}
 	if row.DeletedAt != nil {
 		return schedule.Schedule{}, schedule.Fail(409, "schedule_deleted", "Deleted schedules cannot be edited.")
@@ -195,6 +208,9 @@ func (s *Store) update(ctx context.Context, id uuid.UUID, patch []byte, checked 
 	now := s.now()
 	in, err = schedule.Normalize(in, s.AllowedEnv, now)
 	if err != nil {
+		return schedule.Schedule{}, err
+	}
+	if err := actor.RequireManage(in.OwnerEmail); err != nil {
 		return schedule.Schedule{}, err
 	}
 	next, start := row.NextRunAt, row.CronStartedAt
@@ -230,15 +246,19 @@ func (s *Store) update(ctx context.Context, id uuid.UUID, patch []byte, checked 
 	err = summary(ctx, db.New(s.Pool), &out)
 	return out, err
 }
-func (s *Store) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *Store) Delete(ctx context.Context, actor access.Principal, id uuid.UUID) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
 	q := db.New(tx)
-	if _, err = q.LockSchedule(ctx, id); err != nil {
+	row, err := q.LockSchedule(ctx, id)
+	if err != nil {
 		return missing(err)
+	}
+	if err := actor.RequireManage(row.OwnerEmail); err != nil {
+		return err
 	}
 	if err = q.CancelPending(ctx, db.CancelPendingParams{ScheduleID: id, CompletedAt: new(s.now())}); err != nil {
 		return err

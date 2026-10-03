@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/orpheus-agents/orpheus-space/internal/access"
 	"github.com/orpheus-agents/orpheus-space/internal/schedule"
 	"github.com/orpheus-agents/orpheus-space/internal/store/db"
 )
@@ -74,7 +75,7 @@ func (s *Store) History(ctx context.Context, sid uuid.UUID, limit int, token str
 	}
 	return page, nil
 }
-func (s *Store) ResetSession(ctx context.Context, id uuid.UUID) (schedule.Schedule, error) {
+func (s *Store) ResetSession(ctx context.Context, actor access.Principal, id uuid.UUID) (schedule.Schedule, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return schedule.Schedule{}, err
@@ -84,6 +85,9 @@ func (s *Store) ResetSession(ctx context.Context, id uuid.UUID) (schedule.Schedu
 	row, err := q.LockSchedule(ctx, id)
 	if err != nil {
 		return schedule.Schedule{}, missing(err)
+	}
+	if err := actor.RequireManage(row.OwnerEmail); err != nil {
+		return schedule.Schedule{}, err
 	}
 	if row.DeletedAt != nil {
 		return schedule.Schedule{}, schedule.Fail(409, "schedule_deleted", "Deleted schedules cannot be edited.")

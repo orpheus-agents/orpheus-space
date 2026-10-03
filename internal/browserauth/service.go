@@ -56,6 +56,7 @@ type State struct {
 	Mode          string     `json:"mode"`
 	Authenticated bool       `json:"authenticated"`
 	WriteAccess   bool       `json:"write_access"`
+	CanManageAll  bool       `json:"can_manage_all"`
 	ReadAccess    bool       `json:"read_access"`
 	User          *User      `json:"user"`
 	ExpiresAt     *time.Time `json:"expires_at"`
@@ -215,7 +216,7 @@ func (s *Service) Authenticate(r *http.Request) (*Identity, error) {
 	return s.Identity(r.Context(), requestHash(r, CookieName))
 }
 func (s *Service) State(w http.ResponseWriter, r *http.Request) (State, error) {
-	state := State{Mode: s.Mode(), ReadAccess: s.Mode() == "anonymous", WriteAccess: s.Mode() == "anonymous"}
+	state := State{Mode: s.Mode(), ReadAccess: s.Mode() == "anonymous", WriteAccess: s.Mode() == "anonymous", CanManageAll: s.Mode() == "anonymous"}
 	identity, err := s.Authenticate(r)
 	if errors.Is(err, ErrNoSession) {
 		if len(r.CookiesNamed(CookieName)) > 0 {
@@ -228,7 +229,7 @@ func (s *Service) State(w http.ResponseWriter, r *http.Request) (State, error) {
 	}
 	state.Authenticated = true
 	state.ReadAccess = true
-	state.WriteAccess = true
+	state.WriteAccess = identity.Email != nil
 	state.User = &User{Subject: identity.Subject, DisplayName: identity.DisplayName, Email: identity.Email}
 	state.ExpiresAt = &identity.ExpiresAt
 	return state, nil

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beevik/etree"
 	"github.com/google/uuid"
 	"github.com/orpheus-agents/orpheus-space/internal/browserauth"
 	"github.com/orpheus-agents/orpheus-space/internal/config"
@@ -44,7 +45,11 @@ func TestSAMLBrowserCRUDAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	nonce := login.Result().Cookies()[0]
-	form := url.Values{"RelayState": {relay}, "SAMLResponse": {f.Response(t, id, nil)}}.Encode()
+	form := url.Values{"RelayState": {relay}, "SAMLResponse": {f.Response(t, id, func(root *etree.Element) {
+		attribute := root.FindElement("./Assertion/AttributeStatement").CreateElement("saml:Attribute")
+		attribute.CreateAttr("Name", "email")
+		attribute.CreateElement("saml:AttributeValue").SetText(" ALICE@example.com ")
+	})}}.Encode()
 	callback := request(t, h, "POST", "/auth/callback", form, map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Cookie": nonce.String()}, 303)
 	var cookie *http.Cookie
 	for _, c := range callback.Result().Cookies() {

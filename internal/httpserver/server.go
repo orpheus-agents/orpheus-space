@@ -51,11 +51,12 @@ func response[T any](source any) (T, error) {
 // scheduleView adds deployment-specific links without persisting them in snapshots.
 type scheduleView struct {
 	schedule.Schedule
-	URL *string `json:"url"`
+	URL     *string `json:"url"`
+	CanEdit bool    `json:"can_edit"`
 }
 
-func (s *Server) scheduleView(task schedule.Schedule) scheduleView {
-	view := scheduleView{Schedule: task}
+func (s *Server) scheduleView(ctx context.Context, task schedule.Schedule) scheduleView {
+	view := scheduleView{Schedule: task, CanEdit: task.DeletedAt == nil && principal(ctx).CanManage(task.OwnerEmail)}
 	if s.Config.Auth.PublicURL != "" {
 		view.URL = new(s.Config.Auth.PublicURL + "/schedules/" + task.ID.String())
 	}
@@ -74,18 +75,31 @@ func (s *Server) CreateSchedule(ctx context.Context, r api.CreateScheduleRequest
 	if err = json.Unmarshal(raw, &in); err != nil {
 		return nil, err
 	}
-	out, err := s.Store.Create(ctx, in, r.Params.IdempotencyKey)
+	actor := principal(ctx)
+	if !actor.ManageAll && !r.Body.OwnerEmail.IsSpecified() {
+		in.OwnerEmail = actor.Email
+	}
+	out, err := s.Store.Create(ctx, actor, in, r.Params.IdempotencyKey)
 	if err != nil {
 		return nil, err
 	}
-	return response[api.CreateSchedule201JSONResponse](s.scheduleView(out))
+	view := s.scheduleView(ctx, out)
+	if r.Params.IdempotencyKey != nil {
+		// The payload is the original snapshot, but permissions follow the current row.
+		current, err := s.Store.Get(ctx, out.ID)
+		if err != nil {
+			return nil, err
+		}
+		view.CanEdit = current.DeletedAt == nil && actor.CanManage(current.OwnerEmail)
+	}
+	return response[api.CreateSchedule201JSONResponse](view)
 }
 func (s *Server) GetSchedule(ctx context.Context, r api.GetScheduleRequestObject) (api.GetScheduleResponseObject, error) {
 	out, err := s.Store.Get(ctx, r.ID)
 	if err != nil {
 		return nil, err
 	}
-	return response[api.GetSchedule200JSONResponse](s.scheduleView(out))
+	return response[api.GetSchedule200JSONResponse](s.scheduleView(ctx, out))
 }
 func (s *Server) ListSchedules(ctx context.Context, r api.ListSchedulesRequestObject) (api.ListSchedulesResponseObject, error) {
 	out, err := s.Store.List(ctx, store.Filter{Owners: value(r.Params.OwnerEmail, []string{}), Unowned: value(r.Params.Unowned, false), Status: string(value(r.Params.Status, ""))}, value(r.Params.Limit, 50), value(r.Params.Cursor, ""))
@@ -94,7 +108,7 @@ func (s *Server) ListSchedules(ctx context.Context, r api.ListSchedulesRequestOb
 	}
 	items := make([]scheduleView, 0, len(out.Items))
 	for _, task := range out.Items {
-		items = append(items, s.scheduleView(task))
+		items = append(items, s.scheduleView(ctx, task))
 	}
 	return response[api.ListSchedules200JSONResponse](struct {
 		Items      []scheduleView `json:"items"`
@@ -109,14 +123,14 @@ func (s *Server) UpdateSchedule(ctx context.Context, r api.UpdateScheduleRequest
 	if err != nil {
 		return nil, err
 	}
-	out, err := s.Store.Update(ctx, r.ID, raw)
+	out, err := s.Store.Update(ctx, principal(ctx), r.ID, raw)
 	if err != nil {
 		return nil, err
 	}
-	return response[api.UpdateSchedule200JSONResponse](s.scheduleView(out))
+	return response[api.UpdateSchedule200JSONResponse](s.scheduleView(ctx, out))
 }
 func (s *Server) DeleteSchedule(ctx context.Context, r api.DeleteScheduleRequestObject) (api.DeleteScheduleResponseObject, error) {
-	if err := s.Store.Delete(ctx, r.ID); err != nil {
+	if err := s.Store.Delete(ctx, principal(ctx), r.ID); err != nil {
 		return nil, err
 	}
 	return api.DeleteSchedule204Response{}, nil
@@ -159,11 +173,11 @@ func (s *Server) GetOccurrence(ctx context.Context, r api.GetOccurrenceRequestOb
 	return response[api.GetOccurrence200JSONResponse](out)
 }
 func (s *Server) ResetSession(ctx context.Context, r api.ResetSessionRequestObject) (api.ResetSessionResponseObject, error) {
-	out, err := s.Store.ResetSession(ctx, r.ID)
+	out, err := s.Store.ResetSession(ctx, principal(ctx), r.ID)
 	if err != nil {
 		return nil, err
 	}
-	return response[api.ResetSession200JSONResponse](s.scheduleView(out))
+	return response[api.ResetSession200JSONResponse](s.scheduleView(ctx, out))
 }
 func (s *Server) GetOccurrenceResult(ctx context.Context, r api.GetOccurrenceResultRequestObject) (api.GetOccurrenceResultResponseObject, error) {
 	occ, err := s.Store.Occurrence(ctx, r.ID, r.OccurrenceID)

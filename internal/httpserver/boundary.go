@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/orpheus-agents/orpheus-space/internal/access"
 	"github.com/orpheus-agents/orpheus-space/internal/browserauth"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -30,6 +31,12 @@ import (
 )
 
 type bearerKey struct{}
+type principalKey struct{}
+
+func principal(ctx context.Context) access.Principal {
+	actor, _ := ctx.Value(principalKey{}).(access.Principal)
+	return actor
+}
 
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	problem, ok := errors.AsType[*schedule.Error](err)
@@ -88,6 +95,7 @@ func Handler(s *Server) (http.Handler, error) {
 		}
 		publicAuth := r.URL.Path == "/api/v1/auth/session" || r.URL.Path == "/auth/login" || r.URL.Path == "/auth/callback" || r.URL.Path == "/auth/logout" || r.URL.Path == "/saml/metadata"
 		bearer := false
+		actor := access.Principal{}
 		if headers, present := r.Header["Authorization"]; present {
 			if len(headers) == 1 && strings.HasPrefix(headers[0], "Bearer ") {
 				hash := sha256.Sum256([]byte(strings.TrimPrefix(headers[0], "Bearer ")))
@@ -100,8 +108,9 @@ func Handler(s *Server) (http.Handler, error) {
 				writeError(w, r, schedule.Fail(401, "unauthorized", "Valid API credentials are required."))
 				return
 			}
+			actor.ManageAll = true
 		} else if !publicAuth && s.Config.Auth.Mode != "anonymous" {
-			_, err := s.auth.Authenticate(r)
+			identity, err := s.auth.Authenticate(r)
 			if errors.Is(err, browserauth.ErrNoSession) {
 				err = schedule.Fail(401, "unauthorized", "A valid credential is required.")
 			}
@@ -109,6 +118,9 @@ func Handler(s *Server) (http.Handler, error) {
 				writeError(w, r, err)
 				return
 			}
+			actor = access.Browser(identity.Email, s.Config.Access.AdminEmails)
+		} else if s.Config.Auth.Mode == "anonymous" {
+			actor.ManageAll = true
 		}
 		if !bearer && r.URL.Path != "/auth/callback" && r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if s.Config.Auth.PublicURL == "" || len(r.Header.Values("Origin")) != 1 || r.Header.Get("Origin") != s.Config.Auth.PublicURL || len(r.Header.Values("X-Orpheus-CSRF")) != 1 || r.Header.Get("X-Orpheus-CSRF") != "1" {
@@ -117,6 +129,7 @@ func Handler(s *Server) (http.Handler, error) {
 			}
 		}
 		r = r.WithContext(context.WithValue(r.Context(), bearerKey{}, bearer))
+		r = r.WithContext(context.WithValue(r.Context(), principalKey{}, actor))
 		route, params, err := router.FindRoute(r)
 		if err != nil {
 			writeError(w, r, schedule.Fail(404, "not_found", "API route not found."))

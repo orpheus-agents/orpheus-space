@@ -61,8 +61,15 @@ and pin a release tag of the root module.
 | `POST /api/v1/schedules/{id}/reset-session` | Detach reusable session; 409 while an occurrence is active |
 | `GET /api/v1/auth/session` | Public browser access state |
 
-All users with access can edit all schedules. `owner_email` is an editable filter,
-not an authorization boundary. Missing owner means a shared schedule. Repeated
+All users with access can read all schedules and their history/results. SAML
+administrators listed in `[access].admin_emails` can manage any schedule; other
+SAML users can create only for themselves and change only schedules whose
+`owner_email` matches their session email. This includes pause/resume, delete
+and session reset. Only administrators can assign, change or clear an owner.
+Users without a session email can only read. Bearer keys and local `anonymous`
+mode retain full access. Missing owner means a shared schedule, editable only
+with full access. Each response includes `can_edit` for the current caller;
+deleted schedules always report false. Repeated
 `owner_email` filters use OR semantics; `unowned=true` selects shared schedules
 and cannot be combined with email filters. Email addresses are trimmed/lowercased;
 provider-specific aliases are not merged. List order is `(created_at DESC, id DESC)`.
@@ -77,14 +84,19 @@ without changing stored schedules.
 
 Create requires name, prompt, five-field cron and IANA timezone. Defaults are
 `profile` and `template` from execution settings, `status=active`,
-`session_mode=new`, `model=null`, `owner_email=null`, `env_from=[]`.
+`session_mode=new`, `model=null`, `owner_email=null`, `env_from=[]`. For SAML
+non-admins, an omitted owner uses the session email; explicitly passing another
+owner or null returns 403 `schedule_forbidden`. PATCH permits repeating one's
+own normalized email but cannot change or clear it.
 Macros, seconds, years and inline TZ are rejected. `Local` is not a timezone input.
 DST follows cron wall-clock semantics: missing times are skipped, repeated times
 occur twice. Preview uses the same parser as persistence.
 
 Send a UUID `Idempotency-Key` when creating: retries of the same normalized input
 return the original response, including after later edits/deletion; a different
-input returns 409. Keys do not expire. PATCH changes only supplied fields; null
+input returns 409. Permissions are checked before replay. The replay's
+`can_edit` uses current ownership/deletion, even though its other schedule fields
+remain the original snapshot. Keys do not expire. PATCH changes only supplied fields; null
 clears model/owner, while `env_from: []` clears additions. Pause removes the next
 run time. Resume or cron/timezone changes calculate a new future time. Other edits
 preserve the planned time. DELETE hides a schedule from lists but keeps its card
@@ -156,6 +168,20 @@ Missing runs return 404, not-started occurrences 409, and core auth/network fail
 
 ## Configuration and authentication
 
+Configure browser administrators in `orpheus-space.toml`:
+
+```toml
+[access]
+admin_emails = ["admin@example.com"]
+```
+
+An omitted or empty list means no SAML administrators. Addresses use the same
+normalization as ownership; invalid addresses and normalized duplicates fail
+startup. Restart the API after changes; existing sessions acquire their current
+permissions on their next request without another login. This section does not
+affect execution settings or reusable session fingerprints. Before upgrading,
+configure administrators to retain browser management of shared schedules.
+
 | Environment | Purpose |
 | --- | --- |
 | `ORPHEUS_BASE_URL`, `ORPHEUS_API_KEY` | Core origin/key for dispatch, polling and explicit results |
@@ -163,7 +189,7 @@ Missing runs return 404, not-started occurrences 409, and core auth/network fail
 | `PUBLIC_API_KEYS` | JSON array of Space Bearer keys |
 | `ORPHEUS_BROWSER_AUTH` | `api_only` (default), explicit local `anonymous`, or `saml` |
 | `ORPHEUS_PUBLIC_URL` | Exact HTTP(S) origin; web origin for schedule links and browser writes; HTTPS for SAML |
-| `ORPHEUS_CONFIG_FILE` | Base execution TOML, default `orpheus-space.toml` |
+| `ORPHEUS_CONFIG_FILE` | Space access and execution TOML, default `orpheus-space.toml` |
 | `ORPHEUS_MIGRATIONS_DIR` | Goose files, default `migrations` |
 | `HARNESS_ENV_ALLOWLIST` | JSON array of permitted ENV names |
 | `ORPHEUS_HOST`, `ORPHEUS_PORT` | API bind, defaults `0.0.0.0:8000` |
@@ -188,12 +214,20 @@ client identity, database records and cookies remain separate.
 `serve` reads metadata and keys at startup; restart it after rotating files.
 `worker` does not read SAML files or require these settings.
 
-`GET /api/v1/auth/session` reports mode, authenticated/read/write access, nullable
+`GET /api/v1/auth/session` reports mode, authenticated/read/write access,
+`can_manage_all`, nullable
 user (subject, display name and email) and expiry. Email is normalized using the
 same rules as schedule ownership. Configure an IdP attribute whose Name or
 FriendlyName is `email` (in Keycloak, a User Property mapper from `email` to SAML
-attribute `email`). An email-format NameID is also accepted. Missing or invalid
-email stays null, without preventing login. Existing browser sessions acquire
+attribute `email`). An email-format NameID is also accepted. Since email grants ownership and admin
+rights, the IdP must supply a verified organizational identity: users must not
+be able to assert an arbitrary email, including another user's or an admin's.
+Space trusts the signed IdP assertion and does not independently verify mailbox
+ownership. Missing or invalid email stays null, allowing read access only.
+`write_access` means the caller can
+create and modify permitted schedules; `can_manage_all` additionally allows
+managing every owner, and is also true for Bearer and anonymous access.
+Existing browser sessions acquire
 email on the next SAML login. `/auth/login?next=/schedules` starts login;
 `next` must be a local path. `POST /auth/logout` requires Origin/CSRF and revokes
 only Space's local session. It does not sign out of Keycloak or core. The
@@ -205,8 +239,9 @@ the public session endpoint clears them and reports an unauthenticated state.
 
 Only hashes of opaque session/nonce tokens are stored. Pending login consumption
 and session creation are atomic; expiry cleanup runs under worker ownership every
-10 minutes in bounded batches. Browser sessions grant full schedule access,
-including editing the owner email. Login/callback/metadata return 404 outside SAML.
+10 minutes in bounded batches. Owner checks run inside write transactions;
+transferring a schedule revokes the previous owner's write access.
+Login/callback/metadata return 404 outside SAML.
 
 The TOML configuration follows core's agent/sandbox/limits structure; see
 [orpheus-space.toml.dist](orpheus-space.toml.dist). `instructions_file` and inline

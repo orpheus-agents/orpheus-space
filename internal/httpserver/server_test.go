@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/orpheus-agents/orpheus-space/internal/access"
 	"github.com/orpheus-agents/orpheus-space/internal/core"
 	"github.com/orpheus-agents/orpheus-space/internal/store/db"
 	coreapi "github.com/orpheus-agents/orpheus/client"
@@ -262,7 +263,7 @@ func TestHistoryAndExplicitResult(t *testing.T) {
 	in.Prompt = "prompt"
 	in.Cron = "* * * * *"
 	in.Timezone = "UTC"
-	task, err := storage.Create(t.Context(), in, nil)
+	task, err := storage.Create(t.Context(), access.Principal{ManageAll: true}, in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

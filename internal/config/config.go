@@ -45,6 +45,11 @@ type Config struct {
 	MaxRequestBytes int64
 	WorkerPoll      time.Duration
 	Execution       Execution
+	Access          Access
+}
+
+type Access struct {
+	AdminEmails []string `toml:"admin_emails"`
 }
 
 func env(key, fallback string) string {
@@ -142,6 +147,7 @@ func load(browser bool) (Config, error) {
 	defer func() { _ = file.Close() }()
 	var cfg struct {
 		Execution Execution `toml:"execution"`
+		Access    Access    `toml:"access"`
 	}
 	cfg.Execution.Limits.RunTimeoutSeconds = 3600
 	if err := toml.NewDecoder(file).DisallowUnknownFields().Decode(&cfg); err != nil {
@@ -152,6 +158,16 @@ func load(browser bool) (Config, error) {
 		return c, errors.New("invalid execution TOML")
 	}
 	c.Execution = cfg.Execution
+	c.Access = cfg.Access
+	seen := make(map[string]bool, len(c.Access.AdminEmails))
+	for i, email := range c.Access.AdminEmails {
+		normalized, err := schedule.Email(email)
+		if err != nil || seen[normalized] {
+			return c, errors.New("access.admin_emails must contain distinct valid email addresses")
+		}
+		seen[normalized] = true
+		c.Access.AdminEmails[i] = normalized
+	}
 	if strings.TrimSpace(c.Execution.Agent.Profile) == "" || strings.TrimSpace(c.Execution.Sandbox.Template) == "" {
 		return c, errors.New("execution profile and sandbox template are required")
 	}

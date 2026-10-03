@@ -43,6 +43,7 @@ paths:
     post:
       operationId: CreateSchedule
       summary: Create a schedule
+      description: SAML non-admins can create only for their own email; an omitted owner is filled from the session. Explicit null or another owner returns 403 schedule_forbidden. Bearer, anonymous and admins have full access.
       tags:
       - Schedules
       parameters:
@@ -82,6 +83,7 @@ paths:
     patch:
       operationId: UpdateSchedule
       summary: Update selected schedule fields
+      description: SAML non-admins can update only their own schedules and cannot change or clear the owner. Denied writes return 403 schedule_forbidden.
       tags:
       - Schedules
       requestBody:
@@ -102,6 +104,7 @@ paths:
     delete:
       operationId: DeleteSchedule
       summary: Soft delete a schedule
+      description: SAML non-admins can delete only their own schedules. Denied writes return 403 schedule_forbidden.
       tags:
       - Schedules
       responses:
@@ -251,6 +254,7 @@ paths:
     post:
       operationId: ResetSession
       summary: Detach the reusable session for the next occurrence
+      description: SAML non-admins can reset only their own schedules. Denied writes return 403 schedule_forbidden.
       tags:
       - Schedules
       responses:
@@ -414,7 +418,7 @@ components:
         format: uuid
   responses:
     Problem:
-      description: Structured API error. 401 credentials, 403 CSRF, 404 missing, 409
+      description: Structured API error. 401 credentials, 403 CSRF or schedule_forbidden, 404 missing, 409
         conflict, 422 validation, 503 unavailable.
       content:
         application/json:
@@ -560,6 +564,7 @@ components:
           type: string
           nullable: true
           minLength: 1
+          description: SAML non-admins must use their session email; omission fills it, explicit null is forbidden. Full-access callers may use any owner or null.
         env_from:
           "$ref": "#/components/schemas/EnvFrom"
     UpdateSchedule:
@@ -607,6 +612,7 @@ components:
       required:
       - id
       - url
+      - can_edit
       - name
       - prompt
       - cron
@@ -624,6 +630,9 @@ components:
       - deleted_at
       - last_occurrence
       properties:
+        can_edit:
+          type: boolean
+          description: Whether this caller may modify the current schedule. False for deleted schedules. Computed from current ownership even on an idempotent creation replay; busy state can still prevent session reset.
         profile:
           type: string
           minLength: 1
@@ -749,6 +758,7 @@ components:
       - authenticated
       - read_access
       - write_access
+      - can_manage_all
       - user
       - expires_at
       properties:
@@ -764,6 +774,10 @@ components:
           type: boolean
         write_access:
           type: boolean
+          description: Can create schedules and modify those available to this caller. SAML users without an email cannot write.
+        can_manage_all:
+          type: boolean
+          description: Can manage all schedules and assign or clear their owners. True for configured SAML admins, valid Bearer keys and anonymous mode.
         user:
           type: object
           nullable: true

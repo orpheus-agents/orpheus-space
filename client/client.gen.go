@@ -225,17 +225,22 @@ func (e Status) Valid() bool {
 
 // AuthSession defines model for AuthSession.
 type AuthSession struct {
-	Authenticated bool                         `json:"authenticated"`
-	ExpiresAt     nullable.Nullable[time.Time] `json:"expires_at"`
-	Mode          AuthSessionMode              `json:"mode"`
-	ReadAccess    bool                         `json:"read_access"`
-	User          nullable.Nullable[struct {
+	Authenticated bool `json:"authenticated"`
+
+	// CanManageAll Can manage all schedules and assign or clear their owners. True for configured SAML admins, valid Bearer keys and anonymous mode.
+	CanManageAll bool                         `json:"can_manage_all"`
+	ExpiresAt    nullable.Nullable[time.Time] `json:"expires_at"`
+	Mode         AuthSessionMode              `json:"mode"`
+	ReadAccess   bool                         `json:"read_access"`
+	User         nullable.Nullable[struct {
 		DisplayName string `json:"display_name"`
 
 		// Email Normalized email from the SAML identity, or null when unavailable.
 		Email   nullable.Nullable[string] `json:"email"`
 		Subject string                    `json:"subject"`
 	}] `json:"user"`
+
+	// WriteAccess Can create schedules and modify those available to this caller. SAML users without an email cannot write.
 	WriteAccess bool `json:"write_access"`
 }
 
@@ -261,10 +266,12 @@ type CodexProfileSummary string
 
 // CreateSchedule defines model for CreateSchedule.
 type CreateSchedule struct {
-	Cron       string                    `json:"cron"`
-	EnvFrom    *EnvFrom                  `json:"env_from,omitempty"`
-	Model      nullable.Nullable[string] `json:"model,omitempty"`
-	Name       string                    `json:"name"`
+	Cron    string                    `json:"cron"`
+	EnvFrom *EnvFrom                  `json:"env_from,omitempty"`
+	Model   nullable.Nullable[string] `json:"model,omitempty"`
+	Name    string                    `json:"name"`
+
+	// OwnerEmail SAML non-admins must use their session email; omission fills it, explicit null is forbidden. Full-access callers may use any owner or null.
 	OwnerEmail nullable.Nullable[string] `json:"owner_email,omitempty"`
 
 	// Profile Exact Orpheus profile name; creation uses the configured default when omitted.
@@ -393,6 +400,8 @@ type Profiles struct {
 
 // Schedule defines model for Schedule.
 type Schedule struct {
+	// CanEdit Whether this caller may modify the current schedule. False for deleted schedules. Computed from current ownership even on an idempotent creation replay; busy state can still prevent session reset.
+	CanEdit        bool                                  `json:"can_edit"`
 	CreatedAt      time.Time                             `json:"created_at"`
 	Cron           string                                `json:"cron"`
 	DeletedAt      nullable.Nullable[time.Time]          `json:"deleted_at"`
@@ -621,12 +630,16 @@ type ClientInterface interface {
 
 	// CreateScheduleWithBody Create a schedule
 	//
+	// SAML non-admins can create only for their own email; an omitted owner is filled from the session. Explicit null or another owner returns 403 schedule_forbidden. Bearer, anonymous and admins have full access.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/schedules (the `CreateSchedule` operationId).
 	CreateScheduleWithBody(ctx context.Context, params *CreateScheduleParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateSchedule Create a schedule
+	//
+	// SAML non-admins can create only for their own email; an omitted owner is filled from the session. Explicit null or another owner returns 403 schedule_forbidden. Bearer, anonymous and admins have full access.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -664,6 +677,8 @@ type ClientInterface interface {
 
 	// DeleteSchedule Soft delete a schedule
 	//
+	// SAML non-admins can delete only their own schedules. Denied writes return 403 schedule_forbidden.
+	//
 	// Corresponds with DELETE /api/v1/schedules/{id} (the `DeleteSchedule` operationId).
 	DeleteSchedule(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -674,12 +689,16 @@ type ClientInterface interface {
 
 	// UpdateScheduleWithBody Update selected schedule fields
 	//
+	// SAML non-admins can update only their own schedules and cannot change or clear the owner. Denied writes return 403 schedule_forbidden.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PATCH /api/v1/schedules/{id} (the `UpdateSchedule` operationId).
 	UpdateScheduleWithBody(ctx context.Context, id ID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateSchedule Update selected schedule fields
+	//
+	// SAML non-admins can update only their own schedules and cannot change or clear the owner. Denied writes return 403 schedule_forbidden.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -702,6 +721,8 @@ type ClientInterface interface {
 	GetOccurrenceResult(ctx context.Context, id ID, occurrenceID OccurrenceID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ResetSession Detach the reusable session for the next occurrence
+	//
+	// SAML non-admins can reset only their own schedules. Denied writes return 403 schedule_forbidden.
 	//
 	// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
 	ResetSession(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -765,6 +786,8 @@ func (c *Client) ListSchedules(ctx context.Context, params *ListSchedulesParams,
 
 // CreateScheduleWithBody Create a schedule
 //
+// SAML non-admins can create only for their own email; an omitted owner is filled from the session. Explicit null or another owner returns 403 schedule_forbidden. Bearer, anonymous and admins have full access.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/schedules (the `CreateSchedule` operationId).
@@ -781,6 +804,8 @@ func (c *Client) CreateScheduleWithBody(ctx context.Context, params *CreateSched
 }
 
 // CreateSchedule Create a schedule
+//
+// SAML non-admins can create only for their own email; an omitted owner is filled from the session. Explicit null or another owner returns 403 schedule_forbidden. Bearer, anonymous and admins have full access.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -878,6 +903,8 @@ func (c *Client) GetTemplates(ctx context.Context, reqEditors ...RequestEditorFn
 
 // DeleteSchedule Soft delete a schedule
 //
+// SAML non-admins can delete only their own schedules. Denied writes return 403 schedule_forbidden.
+//
 // Corresponds with DELETE /api/v1/schedules/{id} (the `DeleteSchedule` operationId).
 func (c *Client) DeleteSchedule(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteScheduleRequest(c.Server, id)
@@ -908,6 +935,8 @@ func (c *Client) GetSchedule(ctx context.Context, id ID, reqEditors ...RequestEd
 
 // UpdateScheduleWithBody Update selected schedule fields
 //
+// SAML non-admins can update only their own schedules and cannot change or clear the owner. Denied writes return 403 schedule_forbidden.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PATCH /api/v1/schedules/{id} (the `UpdateSchedule` operationId).
@@ -924,6 +953,8 @@ func (c *Client) UpdateScheduleWithBody(ctx context.Context, id ID, contentType 
 }
 
 // UpdateSchedule Update selected schedule fields
+//
+// SAML non-admins can update only their own schedules and cannot change or clear the owner. Denied writes return 403 schedule_forbidden.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -986,6 +1017,8 @@ func (c *Client) GetOccurrenceResult(ctx context.Context, id ID, occurrenceID Oc
 }
 
 // ResetSession Detach the reusable session for the next occurrence
+//
+// SAML non-admins can reset only their own schedules. Denied writes return 403 schedule_forbidden.
 //
 // Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
 func (c *Client) ResetSession(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1870,12 +1903,16 @@ type ClientWithResponsesInterface interface {
 
 	// CreateScheduleWithBodyWithResponse Create a schedule
 	//
+	// SAML non-admins can create only for their own email; an omitted owner is filled from the session. Explicit null or another owner returns 403 schedule_forbidden. Bearer, anonymous and admins have full access.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/schedules (the `CreateSchedule` operationId).
 	CreateScheduleWithBodyWithResponse(ctx context.Context, params *CreateScheduleParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateScheduleHTTPResponse, error)
 
 	// CreateScheduleWithResponse Create a schedule
+	//
+	// SAML non-admins can create only for their own email; an omitted owner is filled from the session. Explicit null or another owner returns 403 schedule_forbidden. Bearer, anonymous and admins have full access.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1919,6 +1956,8 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteScheduleWithResponse Soft delete a schedule
 	//
+	// SAML non-admins can delete only their own schedules. Denied writes return 403 schedule_forbidden.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /api/v1/schedules/{id} (the `DeleteSchedule` operationId).
@@ -1933,12 +1972,16 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateScheduleWithBodyWithResponse Update selected schedule fields
 	//
+	// SAML non-admins can update only their own schedules and cannot change or clear the owner. Denied writes return 403 schedule_forbidden.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /api/v1/schedules/{id} (the `UpdateSchedule` operationId).
 	UpdateScheduleWithBodyWithResponse(ctx context.Context, id ID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateScheduleHTTPResponse, error)
 
 	// UpdateScheduleWithResponse Update selected schedule fields
+	//
+	// SAML non-admins can update only their own schedules and cannot change or clear the owner. Denied writes return 403 schedule_forbidden.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1967,6 +2010,8 @@ type ClientWithResponsesInterface interface {
 	GetOccurrenceResultWithResponse(ctx context.Context, id ID, occurrenceID OccurrenceID, reqEditors ...RequestEditorFn) (*GetOccurrenceResultHTTPResponse, error)
 
 	// ResetSessionWithResponse Detach the reusable session for the next occurrence
+	//
+	// SAML non-admins can reset only their own schedules. Denied writes return 403 schedule_forbidden.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2879,6 +2924,8 @@ func (c *ClientWithResponses) ListSchedulesWithResponse(ctx context.Context, par
 
 // CreateScheduleWithBodyWithResponse Create a schedule
 //
+// SAML non-admins can create only for their own email; an omitted owner is filled from the session. Explicit null or another owner returns 403 schedule_forbidden. Bearer, anonymous and admins have full access.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/schedules (the `CreateSchedule` operationId).
@@ -2891,6 +2938,8 @@ func (c *ClientWithResponses) CreateScheduleWithBodyWithResponse(ctx context.Con
 }
 
 // CreateScheduleWithResponse Create a schedule
+//
+// SAML non-admins can create only for their own email; an omitted owner is filled from the session. Explicit null or another owner returns 403 schedule_forbidden. Bearer, anonymous and admins have full access.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -2970,6 +3019,8 @@ func (c *ClientWithResponses) GetTemplatesWithResponse(ctx context.Context, reqE
 
 // DeleteScheduleWithResponse Soft delete a schedule
 //
+// SAML non-admins can delete only their own schedules. Denied writes return 403 schedule_forbidden.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /api/v1/schedules/{id} (the `DeleteSchedule` operationId).
@@ -2996,6 +3047,8 @@ func (c *ClientWithResponses) GetScheduleWithResponse(ctx context.Context, id ID
 
 // UpdateScheduleWithBodyWithResponse Update selected schedule fields
 //
+// SAML non-admins can update only their own schedules and cannot change or clear the owner. Denied writes return 403 schedule_forbidden.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PATCH /api/v1/schedules/{id} (the `UpdateSchedule` operationId).
@@ -3008,6 +3061,8 @@ func (c *ClientWithResponses) UpdateScheduleWithBodyWithResponse(ctx context.Con
 }
 
 // UpdateScheduleWithResponse Update selected schedule fields
+//
+// SAML non-admins can update only their own schedules and cannot change or clear the owner. Denied writes return 403 schedule_forbidden.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3060,6 +3115,8 @@ func (c *ClientWithResponses) GetOccurrenceResultWithResponse(ctx context.Contex
 }
 
 // ResetSessionWithResponse Detach the reusable session for the next occurrence
+//
+// SAML non-admins can reset only their own schedules. Denied writes return 403 schedule_forbidden.
 //
 // Returns a wrapper object for the known response body format(s).
 //

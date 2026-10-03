@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/orpheus-agents/orpheus-space/internal/access"
 	"github.com/orpheus-agents/orpheus-space/internal/store/db"
 )
 
@@ -36,7 +37,7 @@ func TestListBatchesLatestOccurrences(t *testing.T) {
 	q := db.New(pool)
 	expected := make(map[uuid.UUID]uuid.UUID)
 	for i := range 200 {
-		task, err := s.Create(t.Context(), in, nil)
+		task, err := s.Create(t.Context(), access.Principal{ManageAll: true}, in, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
