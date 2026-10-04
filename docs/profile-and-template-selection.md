@@ -6,7 +6,7 @@ field is omitted. Changing these defaults affects only newly created schedules.
 PATCH changes only supplied fields; null, empty and unknown names return 422 with
 the field in `error.details[].path`.
 
-`GET /api/v1/schedules/profiles` and `/templates` return `{items: [...]}` with
+`GET /api/v1/profiles` and `/api/v1/templates` return `{items: [...]}` with
 Orpheus's public configuration, descriptions and `is_default`. A missing configured
 default leaves all flags false. Requests use the service's Orpheus key; browser
 cookies are never forwarded. Upstream failures return 503 `core_unavailable`.
@@ -24,7 +24,10 @@ Worker uses the stored names without looking up catalogs; Orpheus validates new
 sessions. A rejection preserves `unknown_profile` or `unknown_template` in history.
 Descriptions do not affect execution. The optional model overrides the profile's
 model. Execution instructions override profile instructions only when configured;
-base ENV and limits continue to come from Space settings.
+limits continue to come from Space settings. Explicit service codes are stored
+on the schedule. `GET /api/v1/services` exposes the complete service catalog.
+A selection change starts fresh context. Reset context to apply a service
+definition changed under the same code. No service is selected by default.
 
 ## Existing databases
 
