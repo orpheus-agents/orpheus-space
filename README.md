@@ -34,8 +34,9 @@ Set `ORPHEUS_BASE_URL` and `ORPHEUS_API_KEY` in `.env` to connect a core instanc
 reachable from Docker. `make start-worker` starts the planner separately;
 `make start` runs only the API/database. The worker requires core credentials;
 the API can run without them, but catalog reads, result reads, creation and
-selection changes return 503. Local reads and other edits remain available.
-Generated core client version: v0.5.0. No AgentBox credentials are needed here.
+selection validation returns 503. Unchanged services or clearing their full
+selection require no service catalog. Local reads and other edits remain available.
+Generated core client version: v0.6.0. No AgentBox credentials are needed here.
 
 ## API
 
@@ -51,9 +52,10 @@ and pin a release tag of the root module.
 | --- | --- |
 | `GET/POST /api/v1/schedules` | List/create schedules |
 | `GET/PATCH/DELETE /api/v1/schedules/{id}` | Read/edit/soft delete |
-| `GET /api/v1/schedules/profiles` | Public Orpheus profiles with descriptions and `is_default` |
-| `GET /api/v1/schedules/templates` | Orpheus templates with descriptions and `is_default` |
-| `GET /api/v1/schedules/settings` | Base and allowed ENV names, auth mode |
+| `GET /api/v1/services` | Complete service catalog, descriptions and ENV names without values |
+| `GET /api/v1/profiles` | Public Orpheus profiles with descriptions and `is_default` |
+| `GET /api/v1/templates` | Orpheus templates with descriptions and `is_default` |
+| `GET /api/v1/schedules/settings` | Browser auth mode |
 | `POST /api/v1/schedules/preview` | Five future UTC times for cron/timezone |
 | `GET /api/v1/schedules/{id}/occurrences` | Stored history, cursor pagination |
 | `GET /api/v1/schedules/{id}/occurrences/{occurrence_id}` | Stored status/error and observation time |
@@ -84,7 +86,7 @@ without changing stored schedules.
 
 Create requires name, prompt, five-field cron and IANA timezone. Defaults are
 `profile` and `template` from execution settings, `status=active`,
-`session_mode=new`, `model=null`, `owner_email=null`, `env_from=[]`. For SAML
+`session_mode=new`, `model=null`, `owner_email=null`, `services=[]`. For SAML
 non-admins, an omitted owner uses the session email; explicitly passing another
 owner or null returns 403 `schedule_forbidden`. PATCH permits repeating one's
 own normalized email but cannot change or clear it.
@@ -97,7 +99,7 @@ return the original response, including after later edits/deletion; a different
 input returns 409. Permissions are checked before replay. The replay's
 `can_edit` uses current ownership/deletion, even though its other schedule fields
 remain the original snapshot. Keys do not expire. PATCH changes only supplied fields; null
-clears model/owner, while `env_from: []` clears additions. Pause removes the next
+clears model/owner, while `services: []` clears selected services. Pause removes the next
 run time. Resume or cron/timezone changes calculate a new future time. Other edits
 preserve the planned time. DELETE hides a schedule from lists but keeps its card
 with `deleted_at`; repeated DELETE returns 204.
@@ -155,7 +157,7 @@ An uncertain outcome stays unresolved on later auth/replay errors. Agent failure
 are not retried automatically. None of the snapshots contain secret ENV values.
 
 `new` creates single-run sessions. `reuse` continues the same session until profile,
-template, model, ENV names, session mode or effective base configuration changes,
+template, model, service codes, session mode or effective base configuration changes,
 or an explicit reset. Prompt/name/owner/cron edits preserve session history. Old sessions are not
 deleted by Space. Capacity and session-busy errors retry the same request;
 idempotency conflicts block that occurrence for operator investigation.
@@ -191,7 +193,6 @@ configure administrators to retain browser management of shared schedules.
 | `ORPHEUS_PUBLIC_URL` | Exact HTTP(S) origin; web origin for schedule links and browser writes; HTTPS for SAML |
 | `ORPHEUS_CONFIG_FILE` | Space access and execution TOML, default `orpheus-space.toml` |
 | `ORPHEUS_MIGRATIONS_DIR` | Goose files, default `migrations` |
-| `HARNESS_ENV_ALLOWLIST` | JSON array of permitted ENV names |
 | `ORPHEUS_HOST`, `ORPHEUS_PORT` | API bind, defaults `0.0.0.0:8000` |
 | `ORPHEUS_SYSTEM_HOST`, `ORPHEUS_SYSTEM_PORT` | System bind, defaults `0.0.0.0:9100` |
 | `WORKER_POLL_SECONDS` | Positive polling interval in seconds, default 1; fractions supported. Lock monitoring stays at 1 second |
@@ -246,10 +247,17 @@ Login/callback/metadata return 404 outside SAML.
 The TOML configuration follows core's agent/sandbox/limits structure; see
 [orpheus-space.toml.dist](orpheus-space.toml.dist). `instructions_file` and inline
 `instructions` are mutually exclusive. Omitting both preserves core profile
-instructions; an explicit empty string clears them. The API stores only extra ENV names, never
-values. Both base names and additions must be allowlisted; duplicates are rejected.
-The core worker resolves values for the union of base
-and task names. Do not pass database or service-auth secrets to agent environments.
+instructions. An explicit empty string clears them. Schedules store only explicit
+service codes, with no defaults or base ENV lists. All callers with read access
+can browse the complete core catalog. Users who can edit a schedule can select
+any service, including one with a Space API key. The key retains full API access.
+
+Unknown service codes return 422. Any changed nonempty service selection,
+including partial removal, or resuming a paused schedule validates the catalog. Unchanged selections and clearing services can be
+saved while core is unavailable. The core worker resolves ENV values. A service
+selection change starts new context for reusable sessions. After changing ENV
+membership under the same service code, reset the schedule's context to apply it.
+Prepared occurrence requests retain their original body and idempotency key.
 
 ## Development checks
 
@@ -300,8 +308,9 @@ release, verify them against `checksums.txt`, and put the binary on PATH. Unpack
 export ORPHEUS_SPACE_HOST=http://localhost:8010
 export ORPHEUS_SPACE_API_KEY=local-space-key
 orpheus-space schedule list --owner-email alice@example.com --json
-orpheus-space schedule profiles --json
-orpheus-space schedule templates --json
+orpheus-space services --json
+orpheus-space profiles --json
+orpheus-space templates --json
 orpheus-space schedule create --file schedule.json --json
 orpheus-space schedule history <id> --json
 orpheus-space schedule result <id> <occurrence-id> --json
@@ -320,7 +329,7 @@ does not retry automatically. API error diagnostics contain HTTP status and a
 known error code, not arbitrary upstream messages or credential-bearing URLs.
 
 See [the agent skill](skills/orpheus-space/SKILL.md) for author identification from
-connector metadata, ownership filters, prompt context, timezone and ENV selection.
+connector metadata, ownership filters, prompt context, timezone and service selection.
 Mattermost is one example of a connector metadata contract.
 These are agent instructions, not server authorization rules.
 
