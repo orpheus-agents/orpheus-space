@@ -4,13 +4,13 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -31,7 +31,7 @@ func mainCode() int {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	if err := run(ctx, os.Args[1:]); err != nil {
-		slog.Error("Command failed", "error_type", fmt.Sprintf("%T", err))
+		logCommandFailure(err)
 		return 1
 	}
 	return 0
@@ -82,7 +82,7 @@ func run(ctx context.Context, args []string) error {
 	case "worker":
 		cfg, err := config.LoadWorker()
 		if err != nil {
-			return err
+			return fail("configuration", err.Error(), err)
 		}
 		return runWorker(ctx, cfg)
 	case "serve":
@@ -91,8 +91,7 @@ func run(ctx context.Context, args []string) error {
 		}
 		cfg, err := config.Load()
 		if err != nil {
-			slog.Error("Invalid configuration", "reason", err.Error())
-			return err
+			return fail("configuration", err.Error(), err)
 		}
 		return serve(ctx, cfg)
 	default:
@@ -181,41 +180,44 @@ func serve(ctx context.Context, cfg config.Config) error {
 	return cause
 }
 
-func runWorker(ctx context.Context, cfg config.Config) error {
+func runWorker(ctx context.Context, cfg config.Config) (result error) {
+	defer func() {
+		if ctx.Err() != nil && (errors.Is(result, ctx.Err()) || errors.Is(result, context.Cause(ctx))) {
+			result = nil
+		}
+	}()
 	pc, err := config.DatabasePoolConfig(cfg.DatabaseURL)
 	if err != nil {
-		return err
+		return fail("database", "invalid database configuration", err)
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {
-		return err
+		return fail("database", "cannot initialize database pool", err)
 	}
 	defer pool.Close()
 	database := stdlib.OpenDBFromPool(pool)
 	defer func() { _ = database.Close() }()
 	provider, err := migrate.Provider(database, cfg.MigrationsDir)
 	if err != nil {
-		return err
+		return fail("migrations", "cannot initialize migrations", err)
 	}
 	if err = migrate.Ready(ctx, provider); err != nil {
-		return err
+		return fail("migrations", "cannot check database migrations", err)
 	}
-	lease, err := worker.Acquire(ctx, pc.ConnConfig)
-	if err != nil {
-		return err
-	}
-	defer lease.Close()
 	client, err := core.New(cfg.CoreURL, cfg.CoreAPIKey)
 	if err != nil {
-		return err
+		return fail("core_client", "cannot initialize core client", err)
 	}
 	w := &worker.Worker{Store: &store.Store{Pool: pool}, Core: client, Build: worker.Builder(cfg), Poll: cfg.WorkerPoll}
-	workerCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	workerCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	listener, err := net.Listen("tcp", cfg.SystemAddress)
 	if err != nil {
-		return err
+		return fail("probes", "cannot listen for worker probes", err)
 	}
+	// Publish leadership only after acquisition; probes also check the physical
+	// connection so readiness drops immediately on leadership loss.
+	var active atomic.Pointer[worker.Lease]
 	probes := http.NewServeMux()
 	probes.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -226,7 +228,8 @@ func runWorker(ctx context.Context, cfg config.Config) error {
 		defer stop()
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		if workerCtx.Err() != nil || lease.Check(bounded) != nil || migrate.Ready(bounded, provider) != nil {
+		lease := active.Load()
+		if workerCtx.Err() != nil || lease == nil || lease.Check(bounded) != nil || migrate.Ready(bounded, provider) != nil {
 			w.WriteHeader(503)
 			_, _ = io.WriteString(w, `{"status":"unavailable"}`)
 			return
@@ -234,12 +237,32 @@ func runWorker(ctx context.Context, cfg config.Config) error {
 		_, _ = io.WriteString(w, `{"status":"ok"}`)
 	})
 	system := &http.Server{Handler: probes, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
-	serverDone := make(chan error, 1)
-	go func() { serverDone <- system.Serve(listener); cancel() }()
-	defer func() { _ = system.Close(); <-serverDone }()
-	err = w.Run(workerCtx, lease)
-	if ctx.Err() != nil {
-		return nil
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		cancel(fail("probes", "worker probe server stopped", system.Serve(listener)))
+	}()
+	defer func() {
+		cancel(nil)
+		_ = system.Close()
+		<-serverDone
+	}()
+	lease, err := worker.Acquire(workerCtx, pc.ConnConfig)
+	if err != nil {
+		if workerCtx.Err() != nil {
+			return context.Cause(workerCtx)
+		}
+		return fail("leadership", "cannot acquire worker lock", err)
 	}
-	return err
+	defer lease.Close()
+	active.Store(lease)
+	defer active.Store(nil)
+	err = w.Run(workerCtx, lease)
+	if workerCtx.Err() != nil {
+		return context.Cause(workerCtx)
+	}
+	if err != nil {
+		return fail("scheduler", "worker execution failed", err)
+	}
+	return nil
 }

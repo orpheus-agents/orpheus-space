@@ -338,9 +338,13 @@ func TestLeadershipLossPreventsDispatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lease.Close()
-	if other, err := Acquire(t.Context(), w.Store.Pool.Config().ConnConfig); err == nil {
-		other.Close()
-		t.Fatal("second worker acquired lock")
+	waiting, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+	defer cancel()
+	if other, err := Acquire(waiting, w.Store.Pool.Config().ConnConfig); !errors.Is(err, context.DeadlineExceeded) {
+		if other != nil {
+			other.Close()
+		}
+		t.Fatalf("second worker should wait until cancellation: %v", err)
 	}
 	w.Check = lease.Check
 	if _, err = w.Store.Pool.Exec(t.Context(), "SELECT pg_terminate_backend($1)", lease.conn.PgConn().PID()); err != nil {
@@ -471,8 +475,8 @@ func TestLostLeaseCancelsInFlightRequest(t *testing.T) {
 	}
 	select {
 	case err := <-done:
-		if err == nil {
-			t.Fatal("lost lease succeeded")
+		if _, ok := errors.AsType[*LeadershipError](err); !ok {
+			t.Fatalf("lost leadership cause was discarded: %v", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("request was not cancelled")

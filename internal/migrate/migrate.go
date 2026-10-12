@@ -44,6 +44,8 @@ func Run(ctx context.Context, dsn, command, directory string) error {
 	return err
 }
 
+var ErrPending = errors.New("database migrations are pending")
+
 // Ready checks every migration shipped with this binary, including version gaps.
 func Ready(ctx context.Context, provider *goose.Provider) error {
 	pending, err := provider.HasPending(ctx)
@@ -51,7 +53,7 @@ func Ready(ctx context.Context, provider *goose.Provider) error {
 		return err
 	}
 	if pending {
-		return errors.New("database migrations are pending")
+		return ErrPending
 	}
 	return nil
 }

@@ -112,9 +112,14 @@ API responses are no-store.
 ## Execution and recovery
 
 The worker holds a PostgreSQL advisory lock on a dedicated connection; a second
-worker fails startup. Connection loss cancels requests and stops planning. Run one
-replica with Recreate. Eight concurrent requests, HTTP timeouts, and bounded
-backoff isolate unavailable schedules. System probes run on the worker's own
+worker waits, retrying acquisition once per second on its dedicated connection.
+While waiting, `/health` returns 200 and `/ready` returns 503; no schedules are
+planned or dispatched. The worker logs `lock_busy` once and `lock_acquired` when
+leadership becomes available. SIGTERM cancels the wait and closes the connection.
+Database connection/query failures still stop the worker. Connection loss after
+acquisition cancels requests and stops planning. Run one replica with Recreate.
+Eight concurrent requests, HTTP timeouts, and bounded backoff isolate unavailable
+schedules. System probes run on the worker's own
 9100 listener, separate from the API container.
 
 After downtime, only the latest due period is considered. Periods during a
@@ -287,7 +292,11 @@ service to be applied. System routes are not mounted on the public API listener.
 SIGTERM drains HTTP requests. Unexpected API failures log the method, route pattern, innermost error type and,
 for PostgreSQL errors, SQLSTATE without error text or request values. Cancelled
 requests are not logged as failures. Invalid TOML
-reports its line and column without including configuration values.
+reports its line and column without including configuration values. Command
+failures include `phase`, a safe `reason`, the underlying `error_type`, and
+`sqlstate` for PostgreSQL errors. Worker phases distinguish configuration,
+database setup, migrations, leadership acquisition, probes and scheduler execution.
+Raw database, network and upstream error messages are not logged.
 
 ## CI and release
 
