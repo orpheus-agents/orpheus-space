@@ -13,6 +13,11 @@ sending results to a messenger or another application requires the corresponding
 tools and credentials in the task's environment. Space stores status and the run
 reference; `result` retrieves the outcome from core without publishing it elsewhere.
 
+At execution, Space adds host-generated front matter before the saved prompt. It
+contains `source: orpheus_space`, the schedule and occurrence IDs, local run times,
+the timezone, and `owner_email` for an owned schedule. The main skill defines the
+narrow ownership rules for using this identity to manage the originating schedule.
+
 Before creating a task or changing its profile/template, read
 `orpheus-space profiles --json` and `orpheus-space templates --json`.
 Each response has `items` with exact names, descriptions and `is_default`.

@@ -17,8 +17,10 @@ import (
 )
 
 type messageFrontMatter struct {
+	Source            string              `json:"source" yaml:"source"`
 	ScheduleID        uuid.UUID           `json:"schedule_id" yaml:"schedule_id"`
 	OccurrenceID      uuid.UUID           `json:"occurrence_id" yaml:"occurrence_id"`
+	OwnerEmail        *string             `json:"owner_email,omitzero" yaml:"owner_email,omitempty"`
 	ScheduledAt       time.Time           `json:"scheduled_at" yaml:"scheduled_at"`
 	DispatchedAt      time.Time           `json:"-" yaml:"dispatched_at"`
 	Timezone          string              `json:"timezone" yaml:"timezone"`
@@ -58,7 +60,7 @@ func Builder(cfg config.Config) store.BuildSnapshot {
 		hash := sha256.Sum256(fingerprintInput)
 		fingerprint := hex.EncodeToString(hash[:])
 		fields := messageFrontMatter{
-			ScheduleID: row.ID, OccurrenceID: occ.ID,
+			Source: "orpheus_space", ScheduleID: row.ID, OccurrenceID: occ.ID, OwnerEmail: row.OwnerEmail,
 			ScheduledAt: occ.ScheduledAt.In(location), DispatchedAt: now.In(location),
 			Timezone: row.Timezone,
 		}

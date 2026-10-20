@@ -50,6 +50,51 @@ func TestSnapshotLocalTimes(t *testing.T) {
 	}
 }
 
+func TestSnapshotOwnerContext(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		owner *string
+	}{
+		{name: "owned", owner: new("alice@example.com")},
+		{name: "shared"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snapshot, err := Builder(config.Config{})(
+				db.Schedule{Timezone: "UTC", OwnerEmail: tc.owner},
+				db.ScheduleOccurrence{},
+				nil,
+				time.Time{},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var request coreapi.CreateSession
+			if err := json.Unmarshal(snapshot.Body, &request); err != nil {
+				t.Fatal(err)
+			}
+			message := request.Messages[0]
+			frontMatter := readFrontMatter(t, message.Text)
+			if frontMatter.Source != "orpheus_space" || !equalStringPointers(frontMatter.OwnerEmail, tc.owner) {
+				t.Fatal(frontMatter)
+			}
+			var metadata struct {
+				Source     string  `json:"source"`
+				OwnerEmail *string `json:"owner_email"`
+			}
+			if err := json.Unmarshal(*message.Metadata, &metadata); err != nil || metadata.Source != "orpheus_space" || !equalStringPointers(metadata.OwnerEmail, tc.owner) {
+				t.Fatal(metadata, err)
+			}
+			if tc.owner == nil && strings.Contains(message.Text, "owner_email:") {
+				t.Fatal("shared schedule exposed an empty owner", message.Text)
+			}
+		})
+	}
+}
+
+func equalStringPointers(left, right *string) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
 func TestSnapshotLastSuccessfulRun(t *testing.T) {
 	at := time.Date(2026, 10, 25, 0, 30, 0, 0, time.UTC)
 	for _, tc := range []struct {
@@ -112,10 +157,14 @@ func TestSnapshotLastSuccessfulRun(t *testing.T) {
 // Read the actual YAML with independent field types to check the message contract.
 func readFrontMatter(t *testing.T, text string) struct {
 	LastSuccessfulRun map[string]string `yaml:"last_successful_run"`
+	Source            string            `yaml:"source"`
+	OwnerEmail        *string           `yaml:"owner_email"`
 } {
 	t.Helper()
 	var result struct {
 		LastSuccessfulRun map[string]string `yaml:"last_successful_run"`
+		Source            string            `yaml:"source"`
+		OwnerEmail        *string           `yaml:"owner_email"`
 	}
 	content, ok := strings.CutPrefix(text, "---\n")
 	if !ok {
