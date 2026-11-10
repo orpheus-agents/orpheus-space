@@ -5,8 +5,8 @@ info:
   version: 0.1.0
   description: Schedule management and stored history. Catalog and result endpoints read Orpheus synchronously; writes validate new profile, template and service selections.
   license:
-    name: MIT
-    url: https://opensource.org/license/mit
+    name: GNU Affero General Public License v3.0 only
+    url: https://www.gnu.org/licenses/agpl-3.0.html
 servers:
 - url: http://localhost:8010
 security:
