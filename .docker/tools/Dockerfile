@@ -3,7 +3,7 @@ FROM aquasec/trivy:0.74.0 AS trivy
 FROM node:24.14.0-bookworm-slim AS node
 RUN npm install --global @redocly/cli@2.54.0
 FROM sqlc/sqlc:1.31.1 AS sqlc
-FROM golang:1.27.2-bookworm
+FROM golang:1.27.3-bookworm
 COPY --from=sqlc /workspace/sqlc /usr/local/bin/sqlc
 COPY --from=hadolint /bin/hadolint /usr/local/bin/hadolint
 COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
