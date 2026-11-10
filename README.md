@@ -346,3 +346,8 @@ These are agent instructions, not server authorization rules.
 Linux archives, the complete skill and checksums under `bin/release/`. Tag CI
 publishes these alongside the server image. For a local sandbox test, install
 these files only in a temporary sandbox; production template integration is separate.
+
+## License
+
+Licensed under the GNU Affero General Public License, version 3 only
+(`AGPL-3.0-only`). See [LICENSE](LICENSE).
