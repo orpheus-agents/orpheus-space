@@ -82,7 +82,7 @@ func TestCatalogCancellationAndMalformedResponse(t *testing.T) {
 				case "services":
 					_, err = client.Services(t.Context())
 				default:
-					_, err = client.Templates(t.Context())
+					_, err = client.Templates(t.Context(), nil)
 				}
 				server.Close()
 				if ErrorCode(err) != "core_invalid_response" {
@@ -103,7 +103,7 @@ func TestCatalogCancellationAndMalformedResponse(t *testing.T) {
 			case "services":
 				_, err = client.Services(ctx)
 			default:
-				_, err = client.Templates(ctx)
+				_, err = client.Templates(ctx, nil)
 			}
 			if err == nil {
 				t.Fatal("canceled catalog succeeded")

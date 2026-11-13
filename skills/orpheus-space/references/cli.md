@@ -9,7 +9,9 @@ orpheus-space schedule list --owner-email alice@example.com --limit 50 --json
 orpheus-space schedule list --owner-email alice@example.com --cursor '<next_cursor>' --json
 orpheus-space schedule get '<id>' --json
 orpheus-space profiles --json
-orpheus-space templates --json
+orpheus-space templates --active=true --name-contains codex --limit 50 --json
+orpheus-space templates --active=true --name-contains codex --cursor '<next_cursor>' --json
+orpheus-space templates --name 'team/template:tag' --json
 orpheus-space services --json
 orpheus-space schedule settings --json
 orpheus-space schedule preview --cron '0 10 * * 1-5' --timezone Europe/Moscow --json
@@ -56,7 +58,12 @@ failure. The CLI does not retry automatically.
 
 list/get/history/occurrence read stored Space data. `profiles`, `templates`, `services` and
 `result` explicitly query Orpheus and may fail when it is unavailable. List/history return one page and
-next_cursor; they do not fetch all pages automatically. Repeated `--owner-email`
+next_cursor; they do not fetch all pages automatically. Templates also return
+prev_cursor and active, and accept --active=true/false, --name or --name-contains
+(mutually exclusive), --limit (1–200, default 50) and --cursor. Omit --active to
+see both states. Preserve filters while paging; reset the cursor after changing
+filters. Resolve selected names with --name without --active. Schedule settings
+includes default_template, independent of the current catalog page. Repeated `--owner-email`
 filters use OR semantics; when acting for a user, select only the request author.
 `--unowned` is available for administrative use and is outside this skill's
 owner-scoped conversational workflow.

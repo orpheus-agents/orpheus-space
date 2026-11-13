@@ -131,8 +131,27 @@ paths:
   "/api/v1/templates":
     get:
       operationId: GetTemplates
-      summary: Get Orpheus templates and the creation default
+      summary: Get a page of Orpheus templates
+      description: Returns active and inactive templates. The name filters are mutually exclusive. Cursors are bound to the filters; restart pagination after changing them.
       tags: [Catalogs]
+      parameters:
+      - in: query
+        name: active
+        schema: {type: boolean}
+      - in: query
+        name: name
+        description: Exact stored name, including any team slug and tag; case-sensitive.
+        schema: {type: string, minLength: 1}
+      - in: query
+        name: name_contains
+        description: Literal case-insensitive substring of the stored name.
+        schema: {type: string, minLength: 1}
+      - in: query
+        name: limit
+        schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+      - in: query
+        name: cursor
+        schema: {type: string, minLength: 1, maxLength: 8192}
       responses:
         '200':
           description: Success
@@ -550,16 +569,22 @@ components:
     Template:
       type: object
       additionalProperties: false
-      required: [name, description, is_default]
+      required: [id, name, template_name, tag, description, active, is_default]
       properties:
+        id: {type: string, format: uuid}
         name: {type: string}
+        template_name: {type: string}
+        tag: {type: string, nullable: true}
         description: {type: string, nullable: true}
+        active: {type: boolean}
         is_default: {type: boolean}
     Templates:
       type: object
       additionalProperties: false
-      required: [items]
+      required: [items, next_cursor, prev_cursor]
       properties:
+        next_cursor: {type: string, nullable: true}
+        prev_cursor: {type: string, nullable: true}
         items:
           type: array
           items: {$ref: '#/components/schemas/Template'}
@@ -752,7 +777,11 @@ components:
       additionalProperties: false
       required:
       - browser_auth
+      - default_template
       properties:
+        default_template:
+          type: string
+          description: Configured creation default. Resolve it with GET /api/v1/templates?name=... without an active filter; it may be absent or inactive.
         browser_auth:
           type: string
           enum:

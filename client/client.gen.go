@@ -459,6 +459,9 @@ type SessionMode string
 // Settings defines model for Settings.
 type Settings struct {
 	BrowserAuth SettingsBrowserAuth `json:"browser_auth"`
+
+	// DefaultTemplate Configured creation default. Resolve it with GET /api/v1/templates?name=... without an active filter; it may be absent or inactive.
+	DefaultTemplate string `json:"default_template"`
 }
 
 // SettingsBrowserAuth defines model for Settings.BrowserAuth.
@@ -469,14 +472,20 @@ type Status string
 
 // Template defines model for Template.
 type Template struct {
-	Description nullable.Nullable[string] `json:"description"`
-	IsDefault   bool                      `json:"is_default"`
-	Name        string                    `json:"name"`
+	Active       bool                      `json:"active"`
+	Description  nullable.Nullable[string] `json:"description"`
+	ID           openapi_types.UUID        `json:"id"`
+	IsDefault    bool                      `json:"is_default"`
+	Name         string                    `json:"name"`
+	Tag          nullable.Nullable[string] `json:"tag"`
+	TemplateName string                    `json:"template_name"`
 }
 
 // Templates defines model for Templates.
 type Templates struct {
-	Items []Template `json:"items"`
+	Items      []Template                `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	PrevCursor nullable.Nullable[string] `json:"prev_cursor"`
 }
 
 // UpdateSchedule defines model for UpdateSchedule.
@@ -547,6 +556,19 @@ type ListOccurrencesParams struct {
 
 	// Cursor Opaque position bound to normalized filters. New inserts are excluded from an ongoing traversal.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// GetTemplatesParams defines parameters for GetTemplates.
+type GetTemplatesParams struct {
+	Active *bool `form:"active,omitempty" json:"active,omitempty"`
+
+	// Name Exact stored name, including any team slug and tag; case-sensitive.
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
+
+	// NameContains Literal case-insensitive substring of the stored name.
+	NameContains *string `form:"name_contains,omitempty" json:"name_contains,omitempty"`
+	Limit        *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor       *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // BrowserLoginParams defines parameters for BrowserLogin.
@@ -748,10 +770,12 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/services (the `GetServices` operationId).
 	GetServices(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetTemplates Get Orpheus templates and the creation default
+	// GetTemplates Get a page of Orpheus templates
+	//
+	// Returns active and inactive templates. The name filters are mutually exclusive. Cursors are bound to the filters; restart pagination after changing them.
 	//
 	// Corresponds with GET /api/v1/templates (the `GetTemplates` operationId).
-	GetTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetTemplates(ctx context.Context, params *GetTemplatesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// BrowserCallback Consume a signed SAML HTTP-POST response
 	//
@@ -1061,11 +1085,13 @@ func (c *Client) GetServices(ctx context.Context, reqEditors ...RequestEditorFn)
 	return c.Client.Do(req)
 }
 
-// GetTemplates Get Orpheus templates and the creation default
+// GetTemplates Get a page of Orpheus templates
+//
+// Returns active and inactive templates. The name filters are mutually exclusive. Cursors are bound to the filters; restart pagination after changing them.
 //
 // Corresponds with GET /api/v1/templates (the `GetTemplates` operationId).
-func (c *Client) GetTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetTemplatesRequest(c.Server)
+func (c *Client) GetTemplates(ctx context.Context, params *GetTemplatesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1752,7 +1778,7 @@ func NewGetServicesRequest(server string) (*http.Request, error) {
 }
 
 // NewGetTemplatesRequest constructs an http.Request for the GetTemplates method
-func NewGetTemplatesRequest(server string) (*http.Request, error) {
+func NewGetTemplatesRequest(server string, params *GetTemplatesParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1768,6 +1794,81 @@ func NewGetTemplatesRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Active != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "active", *params.Active, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Name != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "name", *params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.NameContains != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "name_contains", *params.NameContains, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -2090,12 +2191,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/services (the `GetServices` operationId).
 	GetServicesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServicesHTTPResponse, error)
 
-	// GetTemplatesWithResponse Get Orpheus templates and the creation default
+	// GetTemplatesWithResponse Get a page of Orpheus templates
+	//
+	// Returns active and inactive templates. The name filters are mutually exclusive. Cursors are bound to the filters; restart pagination after changing them.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/templates (the `GetTemplates` operationId).
-	GetTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTemplatesHTTPResponse, error)
+	GetTemplatesWithResponse(ctx context.Context, params *GetTemplatesParams, reqEditors ...RequestEditorFn) (*GetTemplatesHTTPResponse, error)
 
 	// BrowserCallbackWithResponse Consume a signed SAML HTTP-POST response
 	//
@@ -3258,13 +3361,15 @@ func (c *ClientWithResponses) GetServicesWithResponse(ctx context.Context, reqEd
 	return ParseGetServicesHTTPResponse(rsp)
 }
 
-// GetTemplatesWithResponse Get Orpheus templates and the creation default
+// GetTemplatesWithResponse Get a page of Orpheus templates
+//
+// Returns active and inactive templates. The name filters are mutually exclusive. Cursors are bound to the filters; restart pagination after changing them.
 //
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/templates (the `GetTemplates` operationId).
-func (c *ClientWithResponses) GetTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTemplatesHTTPResponse, error) {
-	rsp, err := c.GetTemplates(ctx, reqEditors...)
+func (c *ClientWithResponses) GetTemplatesWithResponse(ctx context.Context, params *GetTemplatesParams, reqEditors ...RequestEditorFn) (*GetTemplatesHTTPResponse, error) {
+	rsp, err := c.GetTemplates(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

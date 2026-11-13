@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/orpheus-agents/orpheus-space/internal/schedule"
 	coreapi "github.com/orpheus-agents/orpheus/client"
 )
 
@@ -19,6 +20,7 @@ type Failure struct {
 	Code      string
 	Status    int
 	Uncertain bool
+	Details   []schedule.Detail
 }
 
 func (e *Failure) Error() string { return e.Code }
@@ -51,14 +53,48 @@ func decode(res *http.Response, err error, out any) error {
 		return nil
 	}
 	code := "core_unavailable"
+	var details []schedule.Detail
 	var envelope coreapi.ErrorResponse
 	if json.Unmarshal(raw, &envelope) == nil {
 		switch envelope.Error.Code {
-		case "unknown_profile", "unknown_template", "unknown_service", "capacity_exhausted", "session_busy", "idempotency_conflict", "validation_error", "unauthorized", "session_not_found", "run_not_found", "multiple_runs_not_allowed", "token_limit_exceeded", "session_unavailable", "storage_unavailable", "request_too_large", "unsupported_media_type", "invalid_json", "idempotency_key_required":
+		case "unknown_profile", "unknown_template", "unknown_service", "capacity_exhausted", "session_busy", "idempotency_conflict", "validation_error", "invalid_cursor", "unauthorized", "session_not_found", "run_not_found", "multiple_runs_not_allowed", "token_limit_exceeded", "session_unavailable", "storage_unavailable", "request_too_large", "unsupported_media_type", "invalid_json", "idempotency_key_required":
 			code = envelope.Error.Code
 		}
+		if res.StatusCode == 422 && (code == "invalid_cursor" || code == "validation_error") {
+			details = catalogQueryDetails(envelope.Error.Details)
+		}
 	}
-	return &Failure{Code: code, Status: res.StatusCode, Uncertain: res.StatusCode >= 500 && code != "capacity_exhausted" || res.StatusCode >= 300 && res.StatusCode < 400}
+	return &Failure{Code: code, Status: res.StatusCode, Details: details, Uncertain: res.StatusCode >= 500 && code != "capacity_exhausted" || res.StatusCode >= 300 && res.StatusCode < 400}
+}
+
+// Only fixed query names and validation codes cross the catalog proxy boundary.
+func catalogQueryDetails(in []coreapi.ErrorDetail) []schedule.Detail {
+	out := []schedule.Detail{}
+	for _, d := range in {
+		if len(d.Path) != 2 {
+			continue
+		}
+		location, err := d.Path[0].AsErrorDetailPath0()
+		if err != nil || location != "query" {
+			continue
+		}
+		field, err := d.Path[1].AsErrorDetailPath0()
+		if err != nil {
+			continue
+		}
+		switch field {
+		case "active", "name", "name_contains", "limit", "cursor":
+		default:
+			continue
+		}
+		switch string(d.Code) {
+		case "required", "invalid_type", "invalid_value", "unknown_field":
+		default:
+			continue
+		}
+		out = append(out, schedule.Detail{Path: []string{"query", field}, Code: string(d.Code)})
+	}
+	return out
 }
 func (c *Client) Dispatch(ctx context.Context, path string, body []byte, key uuid.UUID) (coreapi.Accepted, error) {
 	var accepted coreapi.Accepted
@@ -134,9 +170,9 @@ func (c *Client) Profiles(ctx context.Context) (coreapi.Profiles, error) {
 	}
 	return out, err
 }
-func (c *Client) Templates(ctx context.Context) (coreapi.Templates, error) {
+func (c *Client) Templates(ctx context.Context, params *coreapi.GetTemplatesParams) (coreapi.Templates, error) {
 	var out coreapi.Templates
-	res, err := c.api.GetTemplates(ctx)
+	res, err := c.api.GetTemplates(ctx, params)
 	if res != nil {
 		defer func() { _ = res.Body.Close() }()
 	}

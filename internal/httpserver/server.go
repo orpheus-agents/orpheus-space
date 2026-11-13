@@ -136,7 +136,7 @@ func (s *Server) DeleteSchedule(ctx context.Context, r api.DeleteScheduleRequest
 	return api.DeleteSchedule204Response{}, nil
 }
 func (s *Server) GetSettings(context.Context, api.GetSettingsRequestObject) (api.GetSettingsResponseObject, error) {
-	return api.GetSettings200JSONResponse{BrowserAuth: api.SettingsBrowserAuth(s.Config.Auth.Mode)}, nil
+	return api.GetSettings200JSONResponse{BrowserAuth: api.SettingsBrowserAuth(s.Config.Auth.Mode), DefaultTemplate: s.Store.DefaultTemplate}, nil
 }
 func (s *Server) PreviewSchedule(_ context.Context, r api.PreviewScheduleRequestObject) (api.PreviewScheduleResponseObject, error) {
 	if r.Body == nil {
@@ -228,12 +228,20 @@ func (s *Server) GetProfiles(ctx context.Context, _ api.GetProfilesRequestObject
 		Items []item `json:"items"`
 	}{items})
 }
-func (s *Server) GetTemplates(ctx context.Context, _ api.GetTemplatesRequestObject) (api.GetTemplatesResponseObject, error) {
+func (s *Server) GetTemplates(ctx context.Context, r api.GetTemplatesRequestObject) (api.GetTemplatesResponseObject, error) {
+	if err := validateTemplateQuery(r.Params); err != nil {
+		return nil, err
+	}
 	if s.Core == nil {
 		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
 	}
-	templates, err := s.Core.Templates(ctx)
+	templates, err := s.Core.Templates(ctx, &coreapi.GetTemplatesParams{Active: r.Params.Active, Name: r.Params.Name, NameContains: r.Params.NameContains, Limit: r.Params.Limit, Cursor: r.Params.Cursor})
 	if err != nil {
+		if failure, ok := errors.AsType[*core.Failure](err); ok && failure.Status == 422 && (failure.Code == "invalid_cursor" || failure.Code == "validation_error") {
+			problem := schedule.Fail(422, failure.Code, "Invalid template catalog query.")
+			problem.Problem.Details = failure.Details
+			return nil, problem
+		}
 		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
 	}
 	type item struct {
@@ -245,8 +253,10 @@ func (s *Server) GetTemplates(ctx context.Context, _ api.GetTemplatesRequestObje
 		items = append(items, item{t, t.Name == s.Store.DefaultTemplate})
 	}
 	return response[api.GetTemplates200JSONResponse](struct {
-		Items []item `json:"items"`
-	}{items})
+		Items      []item  `json:"items"`
+		NextCursor *string `json:"next_cursor"`
+		PrevCursor *string `json:"prev_cursor"`
+	}{items, templates.NextCursor, templates.PrevCursor})
 }
 
 func (s *Server) GetServices(ctx context.Context, _ api.GetServicesRequestObject) (api.GetServicesResponseObject, error) {

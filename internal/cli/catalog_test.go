@@ -30,3 +30,27 @@ func TestRootCatalogCommands(t *testing.T) {
 		})
 	}
 }
+
+func TestTemplatePaginationFlags(t *testing.T) {
+	calls := 0
+	query := ""
+	const body = `{"items":[{"name":"name","active":false}],"next_cursor":"next","prev_cursor":"prev"}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		query = r.URL.Query().Encode()
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(server.Close)
+	code, out, errout := invoke(t, server.URL, "key", "", "templates", "--active=false", "--name-contains", "a_b%", "--limit", "2", "--cursor", "cursor", "--json")
+	if code != 0 || out != body+"\n" || errout != "" || query != "active=false&cursor=cursor&limit=2&name_contains=a_b%25" {
+		t.Fatal(code, out, errout, query)
+	}
+	code, _, _ = invoke(t, server.URL, "key", "", "templates", "--name", "team/name:tag")
+	if code != 0 || query != "limit=50&name=team%2Fname%3Atag" {
+		t.Fatal(code, query)
+	}
+	code, _, _ = invoke(t, server.URL, "key", "", "templates", "--name", "name", "--name-contains", "name")
+	if code != 1 || calls != 2 {
+		t.Fatal(code, calls)
+	}
+}

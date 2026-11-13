@@ -34,9 +34,8 @@ Set `ORPHEUS_BASE_URL` and `ORPHEUS_API_KEY` in `.env` to connect a core instanc
 reachable from Docker. `make start-worker` starts the planner separately;
 `make start` runs only the API/database. The worker requires core credentials;
 the API can run without them, but catalog reads, result reads, creation and
-selection validation returns 503. Unchanged services or clearing their full
-selection require no service catalog. Local reads and other edits remain available.
-Generated core client version: v0.6.0. No AgentBox credentials are needed here.
+selection validation return 503. Local reads, pause and delete remain available.
+No AgentBox credentials are needed here; the generated core client is pinned in go.mod.
 
 ## API
 
@@ -54,8 +53,8 @@ and pin a release tag of the root module.
 | `GET/PATCH/DELETE /api/v1/schedules/{id}` | Read/edit/soft delete |
 | `GET /api/v1/services` | Complete service catalog, descriptions and ENV names without values |
 | `GET /api/v1/profiles` | Public Orpheus profiles with descriptions and `is_default` |
-| `GET /api/v1/templates` | Orpheus templates with descriptions and `is_default` |
-| `GET /api/v1/schedules/settings` | Browser auth mode |
+| `GET /api/v1/templates` | Filtered page of templates, activity and `is_default` |
+| `GET /api/v1/schedules/settings` | Browser auth mode and default template name |
 | `POST /api/v1/schedules/preview` | Five future UTC times for cron/timezone |
 | `GET /api/v1/schedules/{id}/occurrences` | Stored history, cursor pagination |
 | `GET /api/v1/schedules/{id}/occurrences/{occurrence_id}` | Stored status/error and observation time |
@@ -258,8 +257,8 @@ can browse the complete core catalog. Users who can edit a schedule can select
 any service, including one with a Space API key. The key retains full API access.
 
 Unknown service codes return 422. Any changed nonempty service selection,
-including partial removal, or resuming a paused schedule validates the catalog. Unchanged selections and clearing services can be
-saved while core is unavailable. The core worker resolves ENV values. A service
+including partial removal, or resuming a paused schedule validates the catalog. Unchanged service selections and clearing services skip service validation;
+saving still requires an active template. The core worker resolves ENV values. A service
 selection change starts new context for reusable sessions. After changing ENV
 membership under the same service code, reset the schedule's context to apply it.
 Prepared occurrence requests retain their original body and idempotency key.
@@ -328,7 +327,7 @@ orpheus-space schedule result <id> <occurrence-id> --json
 `--file -` reads stdin. `--host` overrides the origin; keys are accepted only via
 ENV. Redirects are never followed. Output is JSON, indented by default or compact
 with `--json`; errors are JSON on stderr. Exit codes: 0 success, 1 error.
-Each list/history call reads one page. Reuse `next_cursor` with the same filters.
+Each list/history/templates call reads one page. Reuse cursors with the same filters.
 `profiles`, `templates` and `result` explicitly access Orpheus; other reads use
 Space's stored data.
 

@@ -18,15 +18,26 @@ contains `source: orpheus_space`, the schedule and occurrence IDs, local run tim
 the timezone, and `owner_email` for an owned schedule. The main skill defines the
 narrow ownership rules for using this identity to manage the originating schedule.
 
-Before creating a task or changing its profile/template, read
-`orpheus-space profiles --json` and `orpheus-space templates --json`.
-Each response has `items` with exact names, descriptions and `is_default`.
-Honor the user's explicit choice. Otherwise use the marked defaults; omitting
-these fields on creation asks the server to save its configured defaults.
-If a default is missing or a choice is unclear, ask the user to choose from the
-catalog. Never invent a name or silently replace a removed choice. Do not change
-existing tasks' selections unless requested. Catalog failures do not prevent
-pausing a task or editing its other fields.
+Before creating a task, read `orpheus-space profiles --json` and
+`orpheus-space schedule settings --json`. Resolve `default_template` or the user's
+explicit name with `orpheus-space templates --name '<name>' --json`, without an
+active filter. Honor the user's explicit choice. Choose only an existing entry
+with `active: true`; a missing or inactive default requires an explicit choice.
+
+To browse choices, use `orpheus-space templates --active=true --name-contains
+'<text>' --limit 50 --json`. This is one page, not the whole catalog. Pass a
+returned `next_cursor` or `prev_cursor` through `--cursor` with the same filters;
+restart pagination after changing filters. Descriptions explain each entry.
+`is_default` indicates the configured name and does not guarantee activity.
+Never invent a name or silently replace a removed/inactive choice.
+
+Before any edit or resume, confirm the effective template by exact name and
+require `active: true`, even if the patch does not change the template. The server
+checks again. Do not change existing tasks' selections unless requested.
+Catalog failures block edits and resume; they do not block pause or delete.
+Use `schedule pause` or a patch with only `{"status":"paused"}` for the exception.
+Creation still requires an active template when initially paused. Omitting
+profile/template on creation saves the configured defaults after validation.
 
 Read `orpheus-space services --json` before selecting services. The response has
 `items` with `code`, `name`, `description` and `env_from` (ENV names, never values).
@@ -37,7 +48,7 @@ access. All catalog entries are selectable, including Orpheus Space.
 Never invent a code or ask for secret values. Orpheus resolves the selected
 services from its configuration and the worker supplies ENV values at execution.
 Unknown codes return 422; catalog unavailability returns 503 when validation is
-needed. An unchanged selection can be kept while editing other fields offline.
+needed. An unchanged service selection is not revalidated on ordinary edits; the template still is.
 Resuming a task validates its complete service selection. Removed services can
 be cleared or replaced with available choices.
 
