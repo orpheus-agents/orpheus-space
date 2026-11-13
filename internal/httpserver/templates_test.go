@@ -79,4 +79,7 @@ func TestTemplatePageProxy(t *testing.T) {
 	upstreamStatus = 500
 	body = `{"error":{"code":"invalid_cursor"}}`
 	request(t, h, "GET", "/api/v1/templates", "", headers, 503)
+	upstreamStatus = 200
+	body = `{"items":[{"name":"sandbox","description":null}]}`
+	request(t, h, "GET", "/api/v1/templates", "", headers, 503)
 }

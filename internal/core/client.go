@@ -176,11 +176,14 @@ func (c *Client) Templates(ctx context.Context, params *coreapi.GetTemplatesPara
 	if res != nil {
 		defer func() { _ = res.Body.Close() }()
 	}
-	err = decode(res, err, &out)
-	if err == nil && out.Items == nil {
-		err = &Failure{Code: "core_invalid_response"}
+	var raw json.RawMessage
+	if err = decode(res, err, &raw); err != nil {
+		return out, err
 	}
-	return out, err
+	if res.StatusCode != http.StatusOK {
+		return coreapi.Templates{}, &Failure{Code: "core_invalid_response"}
+	}
+	return decodeTemplatePage(raw)
 }
 
 func (c *Client) Services(ctx context.Context) (coreapi.Services, error) {

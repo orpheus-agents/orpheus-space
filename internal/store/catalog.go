@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/orpheus-agents/orpheus-space/internal/schedule"
 	coreapi "github.com/orpheus-agents/orpheus/client"
@@ -16,6 +18,9 @@ type Catalog interface {
 
 // Empty arguments mean an unchanged selection in PATCH.
 func (s *Store) validateSelection(ctx context.Context, profile, template string, services []string) error {
+	if strings.ContainsRune(template, 0) || !utf8.ValidString(template) {
+		return schedule.Invalid("template")
+	}
 	if profile == "" && template == "" && len(services) == 0 {
 		return nil
 	}

@@ -90,12 +90,16 @@ func TestCatalogProxyAndSelectionContract(t *testing.T) {
 			path += "/" + task.ID.String()
 		}
 		for _, field := range []string{"profile", "template"} {
-			for _, value := range []string{`null`, `""`, `"unknown"`} {
+			for _, value := range []string{`null`, `""`, `"unknown"`, `"a\u0000"`} {
 				input := `{"` + field + `":` + value + `}`
 				if operation == "POST" {
 					input = strings.TrimSuffix(body, "}") + `,"` + field + `":` + value + `}`
 				}
+				before := calls
 				got := request(t, h, operation, path, input, headers, 422)
+				if field == "template" && value == `"a\u0000"` && calls != before {
+					t.Fatal("invalid template reached core")
+				}
 				var problem api.Problem
 				if err = json.Unmarshal(got.Body.Bytes(), &problem); err != nil || len(problem.Error.Details) != 1 || strings.Join(problem.Error.Details[0].Path, ".") != "body."+field {
 					t.Fatal(got.Body.String(), err)
