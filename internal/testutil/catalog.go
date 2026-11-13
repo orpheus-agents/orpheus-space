@@ -16,8 +16,18 @@ type Catalog struct{}
 func (Catalog) Profiles(context.Context) (coreapi.Profiles, error) {
 	return coreapi.Profiles{Items: []coreapi.Profile{{Name: "default", Harness: coreapi.Codex}, {Name: "other", Harness: coreapi.Codex}}}, nil
 }
-func (Catalog) Templates(context.Context) (coreapi.Templates, error) {
-	return coreapi.Templates{Items: []coreapi.Template{{Name: "sandbox"}, {Name: "other"}}}, nil
+func (Catalog) Templates(_ context.Context, params *coreapi.GetTemplatesParams) (coreapi.Templates, error) {
+	items := []coreapi.Template{}
+	for _, name := range []string{"sandbox", "other"} {
+		if params != nil && params.Name != nil && *params.Name != name {
+			continue
+		}
+		if params != nil && params.Active != nil && !*params.Active {
+			continue
+		}
+		items = append(items, coreapi.Template{ID: uuid.NewSHA1(uuid.NameSpaceURL, []byte(name)), Name: name, TemplateName: name, Active: true})
+	}
+	return coreapi.Templates{Items: items}, nil
 }
 func (Catalog) Run(context.Context, uuid.UUID, uuid.UUID) (coreapi.Run, error) {
 	return coreapi.Run{}, errors.New("unexpected run request")

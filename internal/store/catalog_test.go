@@ -5,20 +5,25 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/orpheus-agents/orpheus-space/internal/access"
+	"github.com/orpheus-agents/orpheus-space/internal/schedule"
 	"github.com/orpheus-agents/orpheus-space/internal/testutil"
 	coreapi "github.com/orpheus-agents/orpheus/client"
 )
 
 type checkedCatalog struct {
 	testutil.Catalog
-	calls  int
-	err    error
-	before func()
+	calls    int
+	err      error
+	before   func()
+	inactive bool
+	missing  bool
 }
 
 func (c *checkedCatalog) Profiles(ctx context.Context) (coreapi.Profiles, error) {
@@ -31,12 +36,66 @@ func (c *checkedCatalog) Profiles(ctx context.Context) (coreapi.Profiles, error)
 	}
 	return c.Catalog.Profiles(ctx)
 }
-func (c *checkedCatalog) Templates(ctx context.Context) (coreapi.Templates, error) {
+func (c *checkedCatalog) Templates(ctx context.Context, params *coreapi.GetTemplatesParams) (coreapi.Templates, error) {
 	c.calls++
+	if params == nil || params.Name == nil || params.Active != nil || params.Cursor != nil {
+		return coreapi.Templates{}, errors.New("selection must use an exact unfiltered lookup")
+	}
 	if c.err != nil {
 		return coreapi.Templates{}, c.err
 	}
-	return c.Catalog.Templates(ctx)
+	page, err := c.Catalog.Templates(ctx, params)
+	if c.inactive {
+		for i := range page.Items {
+			page.Items[i].Active = false
+		}
+	}
+	if c.missing {
+		page.Items = []coreapi.Template{}
+	}
+	return page, err
+}
+
+func TestInactiveOrRemovedTemplateBlocksEditsButAllowsPauseAndDelete(t *testing.T) {
+	for _, removed := range []bool{false, true} {
+		t.Run(fmt.Sprint("removed=", removed), func(t *testing.T) {
+			s, in := fixture(t)
+			catalog := &checkedCatalog{}
+			s.Catalog = catalog
+			actor := access.Principal{ManageAll: true}
+			task, err := s.Create(t.Context(), actor, in, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			catalog.inactive = !removed
+			catalog.missing = removed
+			in.Status = "paused"
+			_, err = s.Create(t.Context(), actor, in, nil)
+			requireStatus(t, err, 422)
+			for _, patch := range []string{`{"name":"new"}`, `{"template":"sandbox"}`, `{"profile":"default"}`, `{"status":"active"}`, `{"status":"paused","template":"sandbox"}`} {
+				_, err = s.Update(t.Context(), actor, task.ID, []byte(patch))
+				requireStatus(t, err, 422)
+				problem, _ := errors.AsType[*schedule.Error](err)
+				want := "template_inactive"
+				if removed {
+					want = "template_not_found"
+				}
+				if len(problem.Problem.Details) != 1 || problem.Problem.Details[0].Code != want || strings.Join(problem.Problem.Details[0].Path, ".") != "body.template" {
+					t.Fatal(problem)
+				}
+			}
+			before := catalog.calls
+			if _, err = s.Update(t.Context(), actor, task.ID, []byte(`{"status":"paused"}`)); err != nil || catalog.calls != before {
+				t.Fatal(err, catalog.calls)
+			}
+			_, err = s.Update(t.Context(), actor, task.ID, []byte(`{"status":"paused","name":"`+task.Name+`"}`))
+			requireStatus(t, err, 422)
+			before = catalog.calls
+			if err = s.Delete(t.Context(), actor, task.ID); err != nil || catalog.calls != before {
+				t.Fatal(err, catalog.calls)
+			}
+		})
+	}
 }
 
 func TestSelectionDefaultsReplayAndOfflineEdits(t *testing.T) {
@@ -57,13 +116,12 @@ func TestSelectionDefaultsReplayAndOfflineEdits(t *testing.T) {
 	in.Profile = "default"
 	_, err = s.Create(t.Context(), access.Principal{ManageAll: true}, in, &key)
 	requireStatus(t, err, 409)
-	for _, patch := range []string{`{"name":"renamed"}`, `{"status":"paused"}`, `{"profile":"default","template":"sandbox"}`, `{"prompt":"changed"}`} {
-		if _, err := s.Update(t.Context(), access.Principal{ManageAll: true}, first.ID, []byte(patch)); err != nil {
-			t.Fatal(patch, err)
-		}
+	if _, err := s.Update(t.Context(), access.Principal{ManageAll: true}, first.ID, []byte(`{"status":"paused"}`)); err != nil || catalog.calls != 2 {
+		t.Fatal(err, catalog.calls)
 	}
-	if catalog.calls != 2 {
-		t.Fatal("unchanged selections queried Orpheus", catalog.calls)
+	for _, patch := range []string{`{"name":"renamed"}`, `{"profile":"default","template":"sandbox"}`, `{"prompt":"changed"}`, `{"status":"active"}`, `{"status":"paused","name":"unchanged"}`} {
+		_, err := s.Update(t.Context(), access.Principal{ManageAll: true}, first.ID, []byte(patch))
+		requireStatus(t, err, 503)
 	}
 	_, err = s.Update(t.Context(), access.Principal{ManageAll: true}, first.ID, []byte(`{"profile":"other"}`))
 	requireStatus(t, err, 503)
@@ -125,7 +183,7 @@ func TestSelectionValidationDoesNotHoldLocksAndRechecksRaces(t *testing.T) {
 		}
 	}
 	out, err := s.Update(t.Context(), access.Principal{ManageAll: true}, task.ID, []byte(`{"profile":"other"}`))
-	if err != nil || out.Profile != "other" || out.Template != "other" || out.Prompt != "concurrent edit" || catalog.calls != 2 {
+	if err != nil || out.Profile != "other" || out.Template != "other" || out.Prompt != "concurrent edit" || catalog.calls != 4 {
 		t.Fatal(out, err, catalog.calls)
 	}
 }

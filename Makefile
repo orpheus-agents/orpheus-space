@@ -98,7 +98,7 @@ test-go-race: tools
 	$(RUN) go test -race -tags integration ./...
 
 vuln: tools
-	$(RUN) govulncheck ./...
+	$(RUN) go run ./tools/vulncheck
 	$(RUN) trivy fs --no-progress --db-repository ghcr.io/aquasecurity/trivy-db:2 --db-repository mirror.gcr.io/aquasec/trivy-db:2 --scanners vuln,misconfig --exit-code 1 --severity HIGH,CRITICAL --skip-dirs .git --skip-dirs bin .
 
 build: tools

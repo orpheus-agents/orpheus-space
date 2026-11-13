@@ -63,15 +63,13 @@ func command(input io.Reader, output io.Writer, getenv func(string) string, vers
 	group.Args = cobra.NoArgs
 	group.RunE = func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
 	root.AddCommand(group)
-	for _, name := range []string{"profiles", "templates", "services"} {
+	for _, name := range []string{"profiles", "services"} {
 		cmd := &cobra.Command{Use: name, Short: "Read the available catalog from Orpheus through Space", Args: cobra.NoArgs}
 		cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 			return o.call(func(c *api.Client) (*http.Response, error) {
 				switch name {
 				case "profiles":
 					return c.GetProfiles(cmd.Context())
-				case "templates":
-					return c.GetTemplates(cmd.Context())
 				default:
 					return c.GetServices(cmd.Context())
 				}
@@ -79,6 +77,7 @@ func command(input io.Reader, output io.Writer, getenv func(string) string, vers
 		}
 		root.AddCommand(cmd)
 	}
+	root.AddCommand(templateCommand(o))
 	for _, name := range []string{"list", "history"} {
 		var owners []string
 		var unowned bool
