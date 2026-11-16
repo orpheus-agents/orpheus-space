@@ -172,6 +172,13 @@ func (s *Server) GetOccurrence(ctx context.Context, r api.GetOccurrenceRequestOb
 	}
 	return response[api.GetOccurrence200JSONResponse](out)
 }
+func (s *Server) RunSchedule(ctx context.Context, r api.RunScheduleRequestObject) (api.RunScheduleResponseObject, error) {
+	out, err := s.Store.RunSchedule(ctx, principal(ctx), r.ID, r.Params.IdempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+	return response[api.RunSchedule202JSONResponse](out)
+}
 func (s *Server) ResetSession(ctx context.Context, r api.ResetSessionRequestObject) (api.ResetSessionResponseObject, error) {
 	out, err := s.Store.ResetSession(ctx, principal(ctx), r.ID)
 	if err != nil {

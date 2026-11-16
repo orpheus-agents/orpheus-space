@@ -82,7 +82,7 @@ func TestServicesMigrationPreservesSchedulesAndFrozenRequests(t *testing.T) {
 		}
 	}
 	for range 2 {
-		if _, err = p.Up(t.Context()); err != nil {
+		if _, err = p.UpTo(t.Context(), 10); err != nil {
 			t.Fatal(err)
 		}
 		verify("services", "env_from")

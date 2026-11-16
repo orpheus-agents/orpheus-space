@@ -151,6 +151,24 @@ func (e OccurrenceState) Valid() bool {
 	}
 }
 
+// Defines values for OccurrenceTrigger.
+const (
+	Manual    OccurrenceTrigger = "manual"
+	Scheduled OccurrenceTrigger = "scheduled"
+)
+
+// Valid indicates whether the value is a known member of the OccurrenceTrigger enum.
+func (e OccurrenceTrigger) Valid() bool {
+	switch e {
+	case Manual:
+		return true
+	case Scheduled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProfileHarness.
 const (
 	Codex ProfileHarness = "codex"
@@ -301,11 +319,14 @@ type NullableOccurrence struct {
 	RunID              nullable.Nullable[openapi_types.UUID] `json:"run_id"`
 	RunStatus          nullable.Nullable[string]             `json:"run_status"`
 	ScheduleID         openapi_types.UUID                    `json:"schedule_id"`
-	ScheduledAt        time.Time                             `json:"scheduled_at"`
-	SessionID          nullable.Nullable[openapi_types.UUID] `json:"session_id"`
-	State              OccurrenceState                       `json:"state"`
-	SyncErrorCode      nullable.Nullable[string]             `json:"sync_error_code"`
-	UpdatedAt          time.Time                             `json:"updated_at"`
+
+	// ScheduledAt Cron due time for a scheduled occurrence, or command acceptance time for a manual occurrence. This is not the execution start time.
+	ScheduledAt   time.Time                             `json:"scheduled_at"`
+	SessionID     nullable.Nullable[openapi_types.UUID] `json:"session_id"`
+	State         OccurrenceState                       `json:"state"`
+	SyncErrorCode nullable.Nullable[string]             `json:"sync_error_code"`
+	Trigger       OccurrenceTrigger                     `json:"trigger"`
+	UpdatedAt     time.Time                             `json:"updated_at"`
 }
 
 // Occurrence defines model for Occurrence.
@@ -322,11 +343,14 @@ type Occurrence struct {
 	RunID              nullable.Nullable[openapi_types.UUID] `json:"run_id"`
 	RunStatus          nullable.Nullable[string]             `json:"run_status"`
 	ScheduleID         openapi_types.UUID                    `json:"schedule_id"`
-	ScheduledAt        time.Time                             `json:"scheduled_at"`
-	SessionID          nullable.Nullable[openapi_types.UUID] `json:"session_id"`
-	State              OccurrenceState                       `json:"state"`
-	SyncErrorCode      nullable.Nullable[string]             `json:"sync_error_code"`
-	UpdatedAt          time.Time                             `json:"updated_at"`
+
+	// ScheduledAt Cron due time for a scheduled occurrence, or command acceptance time for a manual occurrence. This is not the execution start time.
+	ScheduledAt   time.Time                             `json:"scheduled_at"`
+	SessionID     nullable.Nullable[openapi_types.UUID] `json:"session_id"`
+	State         OccurrenceState                       `json:"state"`
+	SyncErrorCode nullable.Nullable[string]             `json:"sync_error_code"`
+	Trigger       OccurrenceTrigger                     `json:"trigger"`
+	UpdatedAt     time.Time                             `json:"updated_at"`
 }
 
 // OccurrencePage defines model for OccurrencePage.
@@ -353,6 +377,9 @@ type OccurrenceResult struct {
 
 // OccurrenceState defines model for OccurrenceState.
 type OccurrenceState string
+
+// OccurrenceTrigger defines model for OccurrenceTrigger.
+type OccurrenceTrigger string
 
 // Preview defines model for Preview.
 type Preview struct {
@@ -556,6 +583,12 @@ type ListOccurrencesParams struct {
 
 	// Cursor Opaque position bound to normalized filters. New inserts are excluded from an ongoing traversal.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// RunScheduleParams defines parameters for RunSchedule.
+type RunScheduleParams struct {
+	// IdempotencyKey Nonzero UUID identifying this manual command within the schedule. Retrying the same key never creates another occurrence. Keys do not expire.
+	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
 }
 
 // GetTemplatesParams defines parameters for GetTemplates.
@@ -762,6 +795,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
 	ResetSession(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RunSchedule Run a schedule now without changing its timing or activity
+	//
+	// Requires permission to edit the schedule. Active and paused schedules can run manually. Returns 409 schedule_busy while an occurrence is unfinished, including an unknown dispatch outcome. A repeated key for this schedule returns the same occurrence with its current state, even after completion or deletion, subject to current permissions. The worker prepares the saved settings through the usual execution path. Acceptance does not mean the agent has started.
+	//
+	// Corresponds with POST /api/v1/schedules/{id}/run (the `RunSchedule` operationId).
+	RunSchedule(ctx context.Context, id ID, params *RunScheduleParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetServices Get available Orpheus services
 	//
@@ -1058,6 +1098,23 @@ func (c *Client) GetOccurrenceResult(ctx context.Context, id ID, occurrenceID Oc
 // Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
 func (c *Client) ResetSession(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewResetSessionRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RunSchedule Run a schedule now without changing its timing or activity
+//
+// Requires permission to edit the schedule. Active and paused schedules can run manually. Returns 409 schedule_busy while an occurrence is unfinished, including an unknown dispatch outcome. A repeated key for this schedule returns the same occurrence with its current state, even after completion or deletion, subject to current permissions. The worker prepares the saved settings through the usual execution path. Acceptance does not mean the agent has started.
+//
+// Corresponds with POST /api/v1/schedules/{id}/run (the `RunSchedule` operationId).
+func (c *Client) RunSchedule(ctx context.Context, id ID, params *RunScheduleParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunScheduleRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1750,6 +1807,53 @@ func NewResetSessionRequest(server string, id ID) (*http.Request, error) {
 	return req, nil
 }
 
+// NewRunScheduleRequest constructs an http.Request for the RunSchedule method
+func NewRunScheduleRequest(server string, id ID, params *RunScheduleParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/schedules/%s/run", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: "uuid"})
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Idempotency-Key", headerParam0)
+
+	}
+
+	return req, nil
+}
+
 // NewGetServicesRequest constructs an http.Request for the GetServices method
 func NewGetServicesRequest(server string) (*http.Request, error) {
 	var err error
@@ -2181,6 +2285,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/schedules/{id}/reset-session (the `ResetSession` operationId).
 	ResetSessionWithResponse(ctx context.Context, id ID, reqEditors ...RequestEditorFn) (*ResetSessionHTTPResponse, error)
+
+	// RunScheduleWithResponse Run a schedule now without changing its timing or activity
+	//
+	// Requires permission to edit the schedule. Active and paused schedules can run manually. Returns 409 schedule_busy while an occurrence is unfinished, including an unknown dispatch outcome. A repeated key for this schedule returns the same occurrence with its current state, even after completion or deletion, subject to current permissions. The worker prepares the saved settings through the usual execution path. Acceptance does not mean the agent has started.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/schedules/{id}/run (the `RunSchedule` operationId).
+	RunScheduleWithResponse(ctx context.Context, id ID, params *RunScheduleParams, reqEditors ...RequestEditorFn) (*RunScheduleHTTPResponse, error)
 
 	// GetServicesWithResponse Get available Orpheus services
 	//
@@ -2852,6 +2965,54 @@ func (r ResetSessionHTTPResponse) ContentType() string {
 	return ""
 }
 
+type RunScheduleHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *Occurrence
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Problem
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r RunScheduleHTTPResponse) GetJSON202() *Occurrence {
+	return r.JSON202
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RunScheduleHTTPResponse) GetJSONDefault() *Problem {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RunScheduleHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RunScheduleHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RunScheduleHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RunScheduleHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetServicesHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3344,6 +3505,21 @@ func (c *ClientWithResponses) ResetSessionWithResponse(ctx context.Context, id I
 		return nil, err
 	}
 	return ParseResetSessionHTTPResponse(rsp)
+}
+
+// RunScheduleWithResponse Run a schedule now without changing its timing or activity
+//
+// Requires permission to edit the schedule. Active and paused schedules can run manually. Returns 409 schedule_busy while an occurrence is unfinished, including an unknown dispatch outcome. A repeated key for this schedule returns the same occurrence with its current state, even after completion or deletion, subject to current permissions. The worker prepares the saved settings through the usual execution path. Acceptance does not mean the agent has started.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/schedules/{id}/run (the `RunSchedule` operationId).
+func (c *ClientWithResponses) RunScheduleWithResponse(ctx context.Context, id ID, params *RunScheduleParams, reqEditors ...RequestEditorFn) (*RunScheduleHTTPResponse, error) {
+	rsp, err := c.RunSchedule(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunScheduleHTTPResponse(rsp)
 }
 
 // GetServicesWithResponse Get available Orpheus services
@@ -3846,6 +4022,39 @@ func ParseResetSessionHTTPResponse(rsp *http.Response) (*ResetSessionHTTPRespons
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRunScheduleHTTPResponse parses an HTTP response from a RunScheduleWithResponse call
+func ParseRunScheduleHTTPResponse(rsp *http.Response) (*RunScheduleHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RunScheduleHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest Occurrence
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem

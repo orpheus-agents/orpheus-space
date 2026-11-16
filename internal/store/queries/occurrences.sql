@@ -1,5 +1,7 @@
 -- name: GetOccurrence :one
 SELECT * FROM schedule_occurrences WHERE schedule_id=$1 AND id=$2;
+-- name: GetManualOccurrence :one
+SELECT * FROM schedule_occurrences WHERE schedule_id=$1 AND manual_key=$2 AND trigger='manual';
 -- name: LastOccurrence :one
 SELECT * FROM schedule_occurrences WHERE schedule_id=$1 ORDER BY scheduled_at DESC,id DESC LIMIT 1;
 -- name: LastOccurrences :many
@@ -25,8 +27,11 @@ ORDER BY next_run_at,id LIMIT 100;
 SELECT * FROM schedule_occurrences WHERE completed_at IS NULL AND (next_attempt_at IS NULL OR next_attempt_at <= $1 OR (state='accepted' AND sync_error_code IS NULL AND EXISTS (SELECT 1 FROM schedules s WHERE s.id=schedule_id AND s.next_run_at <= $1)))
 ORDER BY next_attempt_at NULLS FIRST,scheduled_at,id LIMIT 100;
 -- name: InsertOccurrence :one
-INSERT INTO schedule_occurrences(id,schedule_id,scheduled_at,state,created_at,updated_at,completed_at,request_key,error_code)
-VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8) RETURNING *;
+INSERT INTO schedule_occurrences(id,schedule_id,scheduled_at,state,created_at,updated_at,completed_at,request_key,error_code,trigger)
+VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,'scheduled') RETURNING *;
+-- name: InsertManualOccurrence :one
+INSERT INTO schedule_occurrences(id,schedule_id,scheduled_at,state,created_at,updated_at,request_key,trigger,manual_key)
+VALUES ($1,$2,$3,'pending',$3,$3,$4,'manual',$5) RETURNING *;
 -- name: AdvanceSchedule :exec
 UPDATE schedules SET next_run_at=$2 WHERE id=$1;
 -- name: PrepareOccurrence :one
@@ -49,7 +54,8 @@ UPDATE schedule_occurrences SET run_status=$2,observed_at=$3,updated_at=$3,execu
 -- name: ObserveFailure :exec
 UPDATE schedule_occurrences SET sync_error_code=$2,next_attempt_at=$3,updated_at=$4 WHERE id=$1;
 -- name: CancelPending :exec
-UPDATE schedule_occurrences SET state='cancelled',error_code='schedule_inactive',completed_at=$2,updated_at=$2,next_attempt_at=NULL WHERE schedule_id=$1 AND state='pending';
+UPDATE schedule_occurrences SET state='cancelled',error_code='schedule_inactive',completed_at = @completed_at,updated_at = @completed_at,next_attempt_at=NULL
+WHERE schedule_id = @schedule_id AND state='pending' AND (NOT @scheduled_only::boolean OR trigger='scheduled');
 
 -- name: LastSuccessfulOccurrence :one
 SELECT * FROM schedule_occurrences

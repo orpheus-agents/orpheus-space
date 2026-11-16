@@ -9,6 +9,7 @@ import (
 type Occurrence struct {
 	ID                 uuid.UUID  `json:"id"`
 	ScheduleID         uuid.UUID  `json:"schedule_id"`
+	Trigger            string     `json:"trigger"`
 	ScheduledAt        time.Time  `json:"scheduled_at"`
 	State              string     `json:"state"`
 	CreatedAt          time.Time  `json:"created_at"`

@@ -243,7 +243,7 @@ func (s *Store) update(ctx context.Context, actor access.Principal, id uuid.UUID
 		}
 	}
 	if in.Status == "paused" {
-		if err = q.CancelPending(ctx, db.CancelPendingParams{ScheduleID: id, CompletedAt: new(now)}); err != nil {
+		if err = q.CancelPending(ctx, db.CancelPendingParams{ScheduleID: id, CompletedAt: new(now), ScheduledOnly: true}); err != nil {
 			return schedule.Schedule{}, err
 		}
 	}

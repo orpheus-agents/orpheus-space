@@ -181,6 +181,12 @@ func Handler(s *Server) (http.Handler, error) {
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(raw))
+		} else if strings.HasPrefix(r.URL.Path, "/api/v1/") && (r.Method == http.MethodPost || r.Method == http.MethodPatch) {
+			raw, err := io.ReadAll(io.LimitReader(r.Body, 1))
+			if err != nil || len(raw) != 0 {
+				writeError(w, r, schedule.InvalidAt("body"))
+				return
+			}
 		}
 		validation := &openapi3filter.RequestValidationInput{Request: r, PathParams: params, Route: route, Options: &openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc, SkipSettingDefaults: true}}
 		if err := openapi3filter.ValidateRequest(r.Context(), validation); err != nil {

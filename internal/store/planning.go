@@ -96,8 +96,8 @@ func (s *Store) Prepare(ctx context.Context, sid, id uuid.UUID, now time.Time, b
 	if occ.State != "pending" {
 		return occ, nil
 	}
-	if row.DeletedAt != nil || row.Status != "active" {
-		err = q.CancelPending(ctx, db.CancelPendingParams{ScheduleID: sid, CompletedAt: new(now)})
+	if row.DeletedAt != nil || row.Status != "active" && occ.Trigger == "scheduled" {
+		err = q.CancelPending(ctx, db.CancelPendingParams{ScheduleID: sid, CompletedAt: new(now), ScheduledOnly: row.DeletedAt == nil})
 		if err != nil {
 			return occ, err
 		}

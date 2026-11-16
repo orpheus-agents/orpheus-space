@@ -84,4 +84,6 @@ type ScheduleOccurrence struct {
 	FinishedAt         *time.Time `json:"finished_at"`
 	RunErrorCode       *string    `json:"run_error_code"`
 	SyncErrorCode      *string    `json:"sync_error_code"`
+	Trigger            string     `json:"trigger"`
+	ManualKey          *uuid.UUID `json:"manual_key"`
 }
