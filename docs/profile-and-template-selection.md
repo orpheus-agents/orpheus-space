@@ -37,14 +37,12 @@ Retrying an accepted creation with the same idempotency key and normalized input
 returns its saved result without catalog access, even when defaults change.
 Omitted fields and explicitly supplied names are distinct idempotency inputs.
 
-During the template catalog rollout, core's admission still reads TOML. A newly
-registered catalog name can be selected in Space yet rejected by core until
-TOML contains it. The separate runtime switch removes that transition period.
-
 A profile or template change starts a new reusable session on the next unprepared
 occurrence. Already prepared requests keep their original body, path and key.
-Worker uses the stored names without looking up catalogs; Orpheus validates new
-sessions. A rejection preserves `unknown_profile` or `unknown_template` in history.
+Worker uses the stored names without looking up catalogs. Orpheus validates new
+sessions against exact, active names in its template database catalog. Changes to
+the catalog do not affect accepted sessions or idempotent replays. A rejection
+preserves `unknown_profile` or `unknown_template` in history.
 Descriptions do not affect execution. The optional model overrides the profile's
 model. Execution instructions override profile instructions only when configured;
 limits continue to come from Space settings. Explicit service codes are stored
