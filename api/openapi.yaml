@@ -284,6 +284,32 @@ paths:
                 "$ref": "#/components/schemas/OccurrenceResult"
         default:
           "$ref": "#/components/responses/Problem"
+  "/api/v1/schedules/{id}/run":
+    parameters:
+    - "$ref": "#/components/parameters/ID"
+    post:
+      operationId: RunSchedule
+      summary: Run a schedule now without changing its timing or activity
+      description: Requires permission to edit the schedule. Active and paused schedules can run manually. Returns 409 schedule_busy while an occurrence is unfinished, including an unknown dispatch outcome. A repeated key for this schedule returns the same occurrence with its current state, even after completion or deletion, subject to current permissions. The worker prepares the saved settings through the usual execution path. Acceptance does not mean the agent has started.
+      tags:
+      - Schedules
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        description: Nonzero UUID identifying this manual command within the schedule. Retrying the same key never creates another occurrence. Keys do not expire.
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: The command was stored, or the same command was already accepted.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Occurrence"
+        default:
+          "$ref": "#/components/responses/Problem"
   "/api/v1/schedules/{id}/reset-session":
     parameters:
     - "$ref": "#/components/parameters/ID"
@@ -866,6 +892,7 @@ components:
       required:
       - id
       - schedule_id
+      - trigger
       - scheduled_at
       - state
       - created_at
@@ -888,9 +915,12 @@ components:
         schedule_id:
           type: string
           format: uuid
+        trigger:
+          "$ref": "#/components/schemas/OccurrenceTrigger"
         scheduled_at:
           type: string
           format: date-time
+          description: Cron due time for a scheduled occurrence, or command acceptance time for a manual occurrence. This is not the execution start time.
         state:
           "$ref": "#/components/schemas/OccurrenceState"
         created_at:
@@ -999,6 +1029,11 @@ components:
             created_at:
               type: string
               format: date-time
+    OccurrenceTrigger:
+      type: string
+      enum:
+      - scheduled
+      - manual
     OccurrenceState:
       type: string
       enum:
@@ -1014,6 +1049,7 @@ components:
       required:
       - id
       - schedule_id
+      - trigger
       - scheduled_at
       - state
       - created_at
@@ -1036,9 +1072,12 @@ components:
         schedule_id:
           type: string
           format: uuid
+        trigger:
+          "$ref": "#/components/schemas/OccurrenceTrigger"
         scheduled_at:
           type: string
           format: date-time
+          description: Cron due time for a scheduled occurrence, or command acceptance time for a manual occurrence. This is not the execution start time.
         state:
           "$ref": "#/components/schemas/OccurrenceState"
         created_at:

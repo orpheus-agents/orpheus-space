@@ -14,7 +14,7 @@ import (
 )
 
 func occurrence(row db.ScheduleOccurrence) schedule.Occurrence {
-	return schedule.Occurrence{ID: row.ID, ScheduleID: row.ScheduleID, ScheduledAt: row.ScheduledAt, State: row.State, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, SessionID: row.SessionID, RunID: row.RunID, RunStatus: row.RunStatus, ObservedAt: row.ObservedAt, ExecutionStartedAt: row.ExecutionStartedAt, FinishedAt: row.FinishedAt, RunErrorCode: row.RunErrorCode, SyncErrorCode: row.SyncErrorCode, ErrorCode: row.ErrorCode, Attempts: row.Attempts, NextAttemptAt: row.NextAttemptAt}
+	return schedule.Occurrence{ID: row.ID, ScheduleID: row.ScheduleID, Trigger: row.Trigger, ScheduledAt: row.ScheduledAt, State: row.State, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, SessionID: row.SessionID, RunID: row.RunID, RunStatus: row.RunStatus, ObservedAt: row.ObservedAt, ExecutionStartedAt: row.ExecutionStartedAt, FinishedAt: row.FinishedAt, RunErrorCode: row.RunErrorCode, SyncErrorCode: row.SyncErrorCode, ErrorCode: row.ErrorCode, Attempts: row.Attempts, NextAttemptAt: row.NextAttemptAt}
 }
 func summary(ctx context.Context, q *db.Queries, s *schedule.Schedule) error {
 	row, err := q.LastOccurrence(ctx, s.ID)

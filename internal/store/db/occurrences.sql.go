@@ -34,7 +34,7 @@ func (q *Queries) AcceptOccurrence(ctx context.Context, arg AcceptOccurrencePara
 }
 
 const activeOccurrence = `-- name: ActiveOccurrence :one
-SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code FROM schedule_occurrences WHERE schedule_id=$1 AND completed_at IS NULL
+SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key FROM schedule_occurrences WHERE schedule_id=$1 AND completed_at IS NULL
 `
 
 func (q *Queries) ActiveOccurrence(ctx context.Context, scheduleID uuid.UUID) (ScheduleOccurrence, error) {
@@ -66,6 +66,8 @@ func (q *Queries) ActiveOccurrence(ctx context.Context, scheduleID uuid.UUID) (S
 		&i.FinishedAt,
 		&i.RunErrorCode,
 		&i.SyncErrorCode,
+		&i.Trigger,
+		&i.ManualKey,
 	)
 	return i, err
 }
@@ -85,16 +87,18 @@ func (q *Queries) AdvanceSchedule(ctx context.Context, arg AdvanceScheduleParams
 }
 
 const cancelPending = `-- name: CancelPending :exec
-UPDATE schedule_occurrences SET state='cancelled',error_code='schedule_inactive',completed_at=$2,updated_at=$2,next_attempt_at=NULL WHERE schedule_id=$1 AND state='pending'
+UPDATE schedule_occurrences SET state='cancelled',error_code='schedule_inactive',completed_at = $1,updated_at = $1,next_attempt_at=NULL
+WHERE schedule_id = $2 AND state='pending' AND (NOT $3::boolean OR trigger='scheduled')
 `
 
 type CancelPendingParams struct {
-	ScheduleID  uuid.UUID  `json:"schedule_id"`
-	CompletedAt *time.Time `json:"completed_at"`
+	CompletedAt   *time.Time `json:"completed_at"`
+	ScheduleID    uuid.UUID  `json:"schedule_id"`
+	ScheduledOnly bool       `json:"scheduled_only"`
 }
 
 func (q *Queries) CancelPending(ctx context.Context, arg CancelPendingParams) error {
-	_, err := q.db.Exec(ctx, cancelPending, arg.ScheduleID, arg.CompletedAt)
+	_, err := q.db.Exec(ctx, cancelPending, arg.CompletedAt, arg.ScheduleID, arg.ScheduledOnly)
 	return err
 }
 
@@ -154,8 +158,52 @@ func (q *Queries) FinishDispatch(ctx context.Context, arg FinishDispatchParams) 
 	return err
 }
 
+const getManualOccurrence = `-- name: GetManualOccurrence :one
+SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key FROM schedule_occurrences WHERE schedule_id=$1 AND manual_key=$2 AND trigger='manual'
+`
+
+type GetManualOccurrenceParams struct {
+	ScheduleID uuid.UUID  `json:"schedule_id"`
+	ManualKey  *uuid.UUID `json:"manual_key"`
+}
+
+func (q *Queries) GetManualOccurrence(ctx context.Context, arg GetManualOccurrenceParams) (ScheduleOccurrence, error) {
+	row := q.db.QueryRow(ctx, getManualOccurrence, arg.ScheduleID, arg.ManualKey)
+	var i ScheduleOccurrence
+	err := row.Scan(
+		&i.ID,
+		&i.Sequence,
+		&i.ScheduleID,
+		&i.ScheduledAt,
+		&i.State,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+		&i.RequestPath,
+		&i.RequestBody,
+		&i.RequestKey,
+		&i.Fingerprint,
+		&i.Reusable,
+		&i.Uncertain,
+		&i.Attempts,
+		&i.NextAttemptAt,
+		&i.ErrorCode,
+		&i.SessionID,
+		&i.RunID,
+		&i.RunStatus,
+		&i.ObservedAt,
+		&i.ExecutionStartedAt,
+		&i.FinishedAt,
+		&i.RunErrorCode,
+		&i.SyncErrorCode,
+		&i.Trigger,
+		&i.ManualKey,
+	)
+	return i, err
+}
+
 const getOccurrence = `-- name: GetOccurrence :one
-SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code FROM schedule_occurrences WHERE schedule_id=$1 AND id=$2
+SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key FROM schedule_occurrences WHERE schedule_id=$1 AND id=$2
 `
 
 type GetOccurrenceParams struct {
@@ -192,13 +240,69 @@ func (q *Queries) GetOccurrence(ctx context.Context, arg GetOccurrenceParams) (S
 		&i.FinishedAt,
 		&i.RunErrorCode,
 		&i.SyncErrorCode,
+		&i.Trigger,
+		&i.ManualKey,
+	)
+	return i, err
+}
+
+const insertManualOccurrence = `-- name: InsertManualOccurrence :one
+INSERT INTO schedule_occurrences(id,schedule_id,scheduled_at,state,created_at,updated_at,request_key,trigger,manual_key)
+VALUES ($1,$2,$3,'pending',$3,$3,$4,'manual',$5) RETURNING id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key
+`
+
+type InsertManualOccurrenceParams struct {
+	ID          uuid.UUID  `json:"id"`
+	ScheduleID  uuid.UUID  `json:"schedule_id"`
+	ScheduledAt time.Time  `json:"scheduled_at"`
+	RequestKey  uuid.UUID  `json:"request_key"`
+	ManualKey   *uuid.UUID `json:"manual_key"`
+}
+
+func (q *Queries) InsertManualOccurrence(ctx context.Context, arg InsertManualOccurrenceParams) (ScheduleOccurrence, error) {
+	row := q.db.QueryRow(ctx, insertManualOccurrence,
+		arg.ID,
+		arg.ScheduleID,
+		arg.ScheduledAt,
+		arg.RequestKey,
+		arg.ManualKey,
+	)
+	var i ScheduleOccurrence
+	err := row.Scan(
+		&i.ID,
+		&i.Sequence,
+		&i.ScheduleID,
+		&i.ScheduledAt,
+		&i.State,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+		&i.RequestPath,
+		&i.RequestBody,
+		&i.RequestKey,
+		&i.Fingerprint,
+		&i.Reusable,
+		&i.Uncertain,
+		&i.Attempts,
+		&i.NextAttemptAt,
+		&i.ErrorCode,
+		&i.SessionID,
+		&i.RunID,
+		&i.RunStatus,
+		&i.ObservedAt,
+		&i.ExecutionStartedAt,
+		&i.FinishedAt,
+		&i.RunErrorCode,
+		&i.SyncErrorCode,
+		&i.Trigger,
+		&i.ManualKey,
 	)
 	return i, err
 }
 
 const insertOccurrence = `-- name: InsertOccurrence :one
-INSERT INTO schedule_occurrences(id,schedule_id,scheduled_at,state,created_at,updated_at,completed_at,request_key,error_code)
-VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8) RETURNING id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code
+INSERT INTO schedule_occurrences(id,schedule_id,scheduled_at,state,created_at,updated_at,completed_at,request_key,error_code,trigger)
+VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,'scheduled') RETURNING id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key
 `
 
 type InsertOccurrenceParams struct {
@@ -250,12 +354,14 @@ func (q *Queries) InsertOccurrence(ctx context.Context, arg InsertOccurrencePara
 		&i.FinishedAt,
 		&i.RunErrorCode,
 		&i.SyncErrorCode,
+		&i.Trigger,
+		&i.ManualKey,
 	)
 	return i, err
 }
 
 const lastOccurrence = `-- name: LastOccurrence :one
-SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code FROM schedule_occurrences WHERE schedule_id=$1 ORDER BY scheduled_at DESC,id DESC LIMIT 1
+SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key FROM schedule_occurrences WHERE schedule_id=$1 ORDER BY scheduled_at DESC,id DESC LIMIT 1
 `
 
 func (q *Queries) LastOccurrence(ctx context.Context, scheduleID uuid.UUID) (ScheduleOccurrence, error) {
@@ -287,12 +393,14 @@ func (q *Queries) LastOccurrence(ctx context.Context, scheduleID uuid.UUID) (Sch
 		&i.FinishedAt,
 		&i.RunErrorCode,
 		&i.SyncErrorCode,
+		&i.Trigger,
+		&i.ManualKey,
 	)
 	return i, err
 }
 
 const lastOccurrences = `-- name: LastOccurrences :many
-SELECT DISTINCT ON (schedule_id) id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code FROM schedule_occurrences
+SELECT DISTINCT ON (schedule_id) id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key FROM schedule_occurrences
 WHERE schedule_id = ANY($1::uuid[]) ORDER BY schedule_id,scheduled_at DESC,id DESC
 `
 
@@ -331,6 +439,8 @@ func (q *Queries) LastOccurrences(ctx context.Context, dollar_1 []uuid.UUID) ([]
 			&i.FinishedAt,
 			&i.RunErrorCode,
 			&i.SyncErrorCode,
+			&i.Trigger,
+			&i.ManualKey,
 		); err != nil {
 			return nil, err
 		}
@@ -343,7 +453,7 @@ func (q *Queries) LastOccurrences(ctx context.Context, dollar_1 []uuid.UUID) ([]
 }
 
 const lastSuccessfulOccurrence = `-- name: LastSuccessfulOccurrence :one
-SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code FROM schedule_occurrences
+SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key FROM schedule_occurrences
 WHERE schedule_id=$1 AND scheduled_at < $2 AND state='accepted'
 AND run_status='completed' AND completed_at IS NOT NULL AND finished_at IS NOT NULL
 ORDER BY scheduled_at DESC,id DESC LIMIT 1
@@ -383,6 +493,8 @@ func (q *Queries) LastSuccessfulOccurrence(ctx context.Context, arg LastSuccessf
 		&i.FinishedAt,
 		&i.RunErrorCode,
 		&i.SyncErrorCode,
+		&i.Trigger,
+		&i.ManualKey,
 	)
 	return i, err
 }
@@ -401,7 +513,7 @@ func (q *Queries) LatestCompletion(ctx context.Context, scheduleID uuid.UUID) (t
 }
 
 const listOccurrences = `-- name: ListOccurrences :many
-SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code FROM schedule_occurrences WHERE schedule_id = $1 AND sequence <= $2::bigint
+SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key FROM schedule_occurrences WHERE schedule_id = $1 AND sequence <= $2::bigint
 AND (NOT $3::boolean OR (scheduled_at,id) < ($4::timestamptz,$5::uuid))
 ORDER BY scheduled_at DESC,id DESC LIMIT $6::int
 `
@@ -457,6 +569,8 @@ func (q *Queries) ListOccurrences(ctx context.Context, arg ListOccurrencesParams
 			&i.FinishedAt,
 			&i.RunErrorCode,
 			&i.SyncErrorCode,
+			&i.Trigger,
+			&i.ManualKey,
 		); err != nil {
 			return nil, err
 		}
@@ -469,7 +583,7 @@ func (q *Queries) ListOccurrences(ctx context.Context, arg ListOccurrencesParams
 }
 
 const markAttempt = `-- name: MarkAttempt :one
-UPDATE schedule_occurrences SET attempts=attempts+1,uncertain=true,updated_at=$2 WHERE id=$1 AND state='dispatching' RETURNING id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code
+UPDATE schedule_occurrences SET attempts=attempts+1,uncertain=true,updated_at=$2 WHERE id=$1 AND state='dispatching' RETURNING id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key
 `
 
 type MarkAttemptParams struct {
@@ -506,6 +620,8 @@ func (q *Queries) MarkAttempt(ctx context.Context, arg MarkAttemptParams) (Sched
 		&i.FinishedAt,
 		&i.RunErrorCode,
 		&i.SyncErrorCode,
+		&i.Trigger,
+		&i.ManualKey,
 	)
 	return i, err
 }
@@ -573,7 +689,7 @@ func (q *Queries) OccurrenceUpperBound(ctx context.Context, scheduleID uuid.UUID
 
 const prepareOccurrence = `-- name: PrepareOccurrence :one
 UPDATE schedule_occurrences SET state='dispatching',request_path=$2,request_body=$3,request_key=$4,fingerprint=$5,reusable=$6,updated_at=$7
-WHERE id=$1 AND state='pending' RETURNING id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code
+WHERE id=$1 AND state='pending' RETURNING id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key
 `
 
 type PrepareOccurrenceParams struct {
@@ -623,6 +739,8 @@ func (q *Queries) PrepareOccurrence(ctx context.Context, arg PrepareOccurrencePa
 		&i.FinishedAt,
 		&i.RunErrorCode,
 		&i.SyncErrorCode,
+		&i.Trigger,
+		&i.ManualKey,
 	)
 	return i, err
 }
@@ -666,7 +784,7 @@ func (q *Queries) SaveReusableSession(ctx context.Context, arg SaveReusableSessi
 }
 
 const workOccurrences = `-- name: WorkOccurrences :many
-SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code FROM schedule_occurrences WHERE completed_at IS NULL AND (next_attempt_at IS NULL OR next_attempt_at <= $1 OR (state='accepted' AND sync_error_code IS NULL AND EXISTS (SELECT 1 FROM schedules s WHERE s.id=schedule_id AND s.next_run_at <= $1)))
+SELECT id, sequence, schedule_id, scheduled_at, state, created_at, updated_at, completed_at, request_path, request_body, request_key, fingerprint, reusable, uncertain, attempts, next_attempt_at, error_code, session_id, run_id, run_status, observed_at, execution_started_at, finished_at, run_error_code, sync_error_code, trigger, manual_key FROM schedule_occurrences WHERE completed_at IS NULL AND (next_attempt_at IS NULL OR next_attempt_at <= $1 OR (state='accepted' AND sync_error_code IS NULL AND EXISTS (SELECT 1 FROM schedules s WHERE s.id=schedule_id AND s.next_run_at <= $1)))
 ORDER BY next_attempt_at NULLS FIRST,scheduled_at,id LIMIT 100
 `
 
@@ -705,6 +823,8 @@ func (q *Queries) WorkOccurrences(ctx context.Context, nextAttemptAt *time.Time)
 			&i.FinishedAt,
 			&i.RunErrorCode,
 			&i.SyncErrorCode,
+			&i.Trigger,
+			&i.ManualKey,
 		); err != nil {
 			return nil, err
 		}

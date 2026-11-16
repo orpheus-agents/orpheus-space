@@ -41,6 +41,7 @@ No AgentBox credentials are needed here; the generated core client is pinned in 
 
 See [profile and template selection](docs/profile-and-template-selection.md) for
 defaults, validation and the migration of existing schedules.
+See [manual runs](docs/manual-runs.md) for running a saved schedule immediately.
 
 The contract lives in [api/openapi.yaml](api/openapi.yaml), served as
 `GET /openapi.json`. Generated Go server types and the public [Go client](client/README.md)
@@ -60,6 +61,7 @@ and pin a release tag of the root module.
 | `GET /api/v1/schedules/{id}/occurrences/{occurrence_id}` | Stored status/error and observation time |
 | `GET /api/v1/schedules/{id}/occurrences/{occurrence_id}/result` | Explicit core read of current run status, final message and error |
 | `POST /api/v1/schedules/{id}/reset-session` | Detach reusable session; 409 while an occurrence is active |
+| `POST /api/v1/schedules/{id}/run` | Request a manual run with an idempotency key |
 | `GET /api/v1/auth/session` | Public browser access state |
 
 All users with access can read all schedules and their history/results. SAML
@@ -155,7 +157,8 @@ The previous success is read when preparing the request and saved with it.
 Retries preserve these timestamps even if stored history later changes.
 
 Before dispatch, Space persists the exact request bytes, path and idempotency key.
-Retries and restarts reuse them. Pause/delete cancels pending work; dispatching
+Retries and restarts reuse them. Pause cancels pending scheduled work; delete
+cancels all pending work. Dispatching
 work is reconciled even after pause/delete, without cancelling an accepted run.
 An uncertain outcome stays unresolved on later auth/replay errors. Agent failures
 are not retried automatically. None of the snapshots contain secret ENV values.
