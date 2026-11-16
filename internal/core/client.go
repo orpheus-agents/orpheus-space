@@ -83,7 +83,7 @@ func catalogQueryDetails(in []coreapi.ErrorDetail) []schedule.Detail {
 			continue
 		}
 		switch field {
-		case "active", "name", "name_contains", "limit", "cursor":
+		case "active", "available", "name", "name_contains", "limit", "cursor":
 		default:
 			continue
 		}
@@ -158,17 +158,19 @@ func Terminal(status coreapi.RunStatus) bool {
 	return status == coreapi.RunStatusCompleted || status == coreapi.RunStatusFailed || status == coreapi.RunStatusCancelled
 }
 
-func (c *Client) Profiles(ctx context.Context) (coreapi.Profiles, error) {
-	var out coreapi.Profiles
-	res, err := c.api.GetProfiles(ctx)
+func (c *Client) Profiles(ctx context.Context, params *coreapi.GetProfilesParams) (coreapi.Profiles, error) {
+	res, err := c.api.GetProfiles(ctx, params)
 	if res != nil {
 		defer func() { _ = res.Body.Close() }()
 	}
-	err = decode(res, err, &out)
-	if err == nil && out.Items == nil {
-		err = &Failure{Code: "core_invalid_response"}
+	var raw json.RawMessage
+	if err = decode(res, err, &raw); err != nil {
+		return coreapi.Profiles{}, err
 	}
-	return out, err
+	if res.StatusCode != http.StatusOK {
+		return coreapi.Profiles{}, &Failure{Code: "core_invalid_response"}
+	}
+	return decodeProfilePage(raw)
 }
 func (c *Client) Templates(ctx context.Context, params *coreapi.GetTemplatesParams) (coreapi.Templates, error) {
 	var out coreapi.Templates

@@ -18,26 +18,27 @@ contains `source: orpheus_space`, the schedule and occurrence IDs, local run tim
 the timezone, and `owner_email` for an owned schedule. The main skill defines the
 narrow ownership rules for using this identity to manage the originating schedule.
 
-Before creating a task, read `orpheus-space profiles --json` and
-`orpheus-space schedule settings --json`. Resolve `default_template` or the user's
-explicit name with `orpheus-space templates --name '<name>' --json`, without an
-active filter. Honor the user's explicit choice. Choose only an existing entry
-with `active: true`; a missing or inactive default requires an explicit choice.
+Before creating a task, read `orpheus-space schedule settings --json`. Resolve
+`default_profile` and `default_template`, or the user's explicit names, using
+`orpheus-space profiles --name '<name>' --json` and
+`orpheus-space templates --name '<name>' --json` without activity filters.
+Honor the explicit choice. Require profile `available: true` (both it and its
+account are active) and template `active: true`. A missing or unavailable default
+requires an explicit choice; never substitute the first search result.
 
-To browse choices, use `orpheus-space templates --active=true --name-contains
-'<text>' --limit 50 --json`. This is one page, not the whole catalog. Pass a
-returned `next_cursor` or `prev_cursor` through `--cursor` with the same filters;
-restart pagination after changing filters. Descriptions explain each entry.
-`is_default` indicates the configured name and does not guarantee activity.
-Never invent a name or silently replace a removed/inactive choice.
+Browse profiles with `profiles --available=true --name-contains '<text>' --limit 50`
+and templates with `templates --active=true --name-contains '<text>' --limit 50`.
+Each call reads one page. Pass `next_cursor` or `prev_cursor` through `--cursor`
+with the same filters; restart pagination after changing filters. Descriptions
+explain each entry. `is_default` identifies the configured name without guaranteeing
+availability. Never invent a name or silently replace a removed/inactive choice.
 
-Before any edit or resume, confirm the effective template by exact name and
-require `active: true`, even if the patch does not change the template. The server
-checks again. Do not change existing tasks' selections unless requested.
-Catalog failures block edits and resume; they do not block pause or delete.
-Use `schedule pause` or a patch with only `{"status":"paused"}` for the exception.
-Creation still requires an active template when initially paused. Omitting
-profile/template on creation saves the configured defaults after validation.
+Before any edit or resume, confirm both effective names and availability, even
+when the patch does not change them. The server checks again. Do not change
+existing tasks' selections unless requested. Catalog failures block edits and
+resume; they do not block pause or delete. Use `schedule pause` or a patch with
+only `{"status":"paused"}` for the exception. Creation requires available selections
+even when initially paused. Omitting names saves the validated configured defaults.
 
 Read `orpheus-space services --json` before selecting services. The response has
 `items` with `code`, `name`, `description` and `env_from` (ENV names, never values).
@@ -48,7 +49,7 @@ access. All catalog entries are selectable, including Orpheus Space.
 Never invent a code or ask for secret values. Orpheus resolves the selected
 services from its configuration and the worker supplies ENV values at execution.
 Unknown codes return 422; catalog unavailability returns 503 when validation is
-needed. An unchanged service selection is not revalidated on ordinary edits; the template still is.
+needed. An unchanged service selection is not revalidated on ordinary edits; the profile and template still are.
 Resuming a task validates its complete service selection. Removed services can
 be cleared or replaced with available choices.
 
@@ -57,6 +58,8 @@ be cleared or replaced with available choices.
   services, session mode, or effective base configuration start a new session after the previous run ends.
 Changes to a service definition do not expand an existing reusable session. Use
 `reset-session` when the next execution must pick up the updated definition.
+A profile reassigned to another account also requires session reset to switch an
+existing reusable session; its account stays pinned otherwise.
 
 - `model` is optional; null leaves the choice to the core profile.
 - `status=active` / `paused` means running / paused. Pausing does not cancel a run

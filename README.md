@@ -53,9 +53,9 @@ and pin a release tag of the root module.
 | `GET/POST /api/v1/schedules` | List/create schedules |
 | `GET/PATCH/DELETE /api/v1/schedules/{id}` | Read/edit/soft delete |
 | `GET /api/v1/services` | Complete service catalog, descriptions and ENV names without values |
-| `GET /api/v1/profiles` | Public Orpheus profiles with descriptions and `is_default` |
+| `GET /api/v1/profiles` | Filtered page of profiles, availability and `is_default` |
 | `GET /api/v1/templates` | Filtered page of templates, activity and `is_default` |
-| `GET /api/v1/schedules/settings` | Browser auth mode and default template name |
+| `GET /api/v1/schedules/settings` | Browser auth mode and default profile/template names |
 | `POST /api/v1/schedules/preview` | Five future UTC times for cron/timezone |
 | `GET /api/v1/schedules/{id}/occurrences` | Stored history, cursor pagination |
 | `GET /api/v1/schedules/{id}/occurrences/{occurrence_id}` | Stored status/error and observation time |
@@ -261,7 +261,7 @@ any service, including one with a Space API key. The key retains full API access
 
 Unknown service codes return 422. Any changed nonempty service selection,
 including partial removal, or resuming a paused schedule validates the catalog. Unchanged service selections and clearing services skip service validation;
-saving still requires an active template. The core worker resolves ENV values. A service
+saving still requires an available profile and active template. The core worker resolves ENV values. A service
 selection change starts new context for reusable sessions. After changing ENV
 membership under the same service code, reset the schedule's context to apply it.
 Prepared occurrence requests retain their original body and idempotency key.
@@ -330,7 +330,7 @@ orpheus-space schedule result <id> <occurrence-id> --json
 `--file -` reads stdin. `--host` overrides the origin; keys are accepted only via
 ENV. Redirects are never followed. Output is JSON, indented by default or compact
 with `--json`; errors are JSON on stderr. Exit codes: 0 success, 1 error.
-Each list/history/templates call reads one page. Reuse cursors with the same filters.
+Each list/history/profiles/templates call reads one page. Reuse cursors with the same filters.
 `profiles`, `templates` and `result` explicitly access Orpheus; other reads use
 Space's stored data.
 

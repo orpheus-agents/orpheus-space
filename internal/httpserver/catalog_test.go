@@ -31,7 +31,7 @@ func TestCatalogProxyAndSelectionContract(t *testing.T) {
 		}
 		switch r.URL.Path {
 		case "/api/v1/profiles":
-			_, _ = w.Write([]byte(`{"items":[{"name":"default","description":"Default profile","harness":"codex","model":null,"codex":{},"instructions":"Be concise"}]}`))
+			_, _ = w.Write([]byte(`{"items":[{"id":"00000000-0000-0000-0000-000000000001","name":"default","description":"Default profile","harness":"codex","model":"gpt-test","codex":{},"instructions":"Be concise","account_id":"00000000-0000-0000-0000-000000000002","account_name":"Account","account_active":true,"active":true,"available":true}],"next_cursor":null,"prev_cursor":null}`))
 		case "/api/v1/templates":
 			_, _ = w.Write([]byte(`{"items":[{"id":"00000000-0000-0000-0000-000000000001","name":"sandbox","template_name":"sandbox","tag":null,"description":null,"active":true}],"next_cursor":null,"prev_cursor":null}`))
 		case "/api/v1/services":

@@ -78,7 +78,7 @@ func TestCatalogCancellationAndMalformedResponse(t *testing.T) {
 				}
 				switch name {
 				case "profiles":
-					_, err = client.Profiles(t.Context())
+					_, err = client.Profiles(t.Context(), nil)
 				case "services":
 					_, err = client.Services(t.Context())
 				default:
@@ -99,7 +99,7 @@ func TestCatalogCancellationAndMalformedResponse(t *testing.T) {
 			defer cancel()
 			switch name {
 			case "profiles":
-				_, err = client.Profiles(ctx)
+				_, err = client.Profiles(ctx, nil)
 			case "services":
 				_, err = client.Services(ctx)
 			default:

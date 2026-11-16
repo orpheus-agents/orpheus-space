@@ -18,11 +18,16 @@ Optional nullable fields distinguish omitted, null and concrete values through
 field. To leave it unchanged, leave the field unset. Persist one Idempotency-Key
 per create attempt and reuse it on transport retries.
 
-Use `GetProfilesWithResponse` and `GetTemplatesWithResponse` for the available
-choices, descriptions and `is_default`. On creation, omitted `Profile` / `Template`
+Use `GetProfilesWithResponse` and `GetTemplatesWithResponse` with their query parameters for one page of
+choices, descriptions and `is_default`. Follow `next_cursor`/`prev_cursor` with
+the same filters. Profile selection uses `available=true`; resolve a stored name
+without activity filters. `GetSettingsWithResponse` returns both configured default
+names independently of pagination. On creation, omitted `Profile` / `Template`
 use the configured defaults; on PATCH omission keeps the stored choice. Set a
 nonempty name to choose explicitly. Unlike model/owner, these fields cannot be null.
-Catalog reads and changed selections require Orpheus availability.
+Catalog reads, creation and every edit/resume require Orpheus availability and
+available selections. Pure pause and delete do not. Replaying an accepted create
+with its idempotency key does not revalidate catalogs.
 
 `make generate-client-check`, `make test-client` and `make build-client` validate
 the package without starting a database. Generated files must not be edited by hand.

@@ -63,20 +63,12 @@ func command(input io.Reader, output io.Writer, getenv func(string) string, vers
 	group.Args = cobra.NoArgs
 	group.RunE = func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
 	root.AddCommand(group)
-	for _, name := range []string{"profiles", "services"} {
-		cmd := &cobra.Command{Use: name, Short: "Read the available catalog from Orpheus through Space", Args: cobra.NoArgs}
-		cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-			return o.call(func(c *api.Client) (*http.Response, error) {
-				switch name {
-				case "profiles":
-					return c.GetProfiles(cmd.Context())
-				default:
-					return c.GetServices(cmd.Context())
-				}
-			})
-		}
-		root.AddCommand(cmd)
+
+	services := &cobra.Command{Use: "services", Short: "Read the service catalog from Orpheus through Space", Args: cobra.NoArgs}
+	services.RunE = func(cmd *cobra.Command, _ []string) error {
+		return o.call(func(c *api.Client) (*http.Response, error) { return c.GetServices(cmd.Context()) })
 	}
+	root.AddCommand(services, profileCommand(o))
 	root.AddCommand(templateCommand(o))
 	for _, name := range []string{"list", "history"} {
 		var owners []string
