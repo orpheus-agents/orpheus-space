@@ -162,18 +162,16 @@ func (s *Store) Update(ctx context.Context, actor access.Principal, id uuid.UUID
 			services = in.Services
 		}
 		profile, template := "", ""
-		if in.Profile != row.Profile {
-			profile = in.Profile
-			if strings.TrimSpace(profile) == "" {
-				return schedule.Schedule{}, schedule.Invalid("profile")
-			}
-		}
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(patch, &fields); err != nil {
 			return schedule.Schedule{}, err
 		}
 		_, statusOnly := fields["status"]
 		if len(fields) != 1 || !statusOnly || in.Status != "paused" {
+			profile = in.Profile
+			if strings.TrimSpace(profile) == "" {
+				return schedule.Schedule{}, schedule.Invalid("profile")
+			}
 			template = in.Template
 			if strings.TrimSpace(template) == "" {
 				return schedule.Schedule{}, schedule.Invalid("template")

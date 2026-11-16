@@ -136,7 +136,7 @@ func (s *Server) DeleteSchedule(ctx context.Context, r api.DeleteScheduleRequest
 	return api.DeleteSchedule204Response{}, nil
 }
 func (s *Server) GetSettings(context.Context, api.GetSettingsRequestObject) (api.GetSettingsResponseObject, error) {
-	return api.GetSettings200JSONResponse{BrowserAuth: api.SettingsBrowserAuth(s.Config.Auth.Mode), DefaultTemplate: s.Store.DefaultTemplate}, nil
+	return api.GetSettings200JSONResponse{BrowserAuth: api.SettingsBrowserAuth(s.Config.Auth.Mode), DefaultTemplate: s.Store.DefaultTemplate, DefaultProfile: s.Store.DefaultProfile}, nil
 }
 func (s *Server) PreviewSchedule(_ context.Context, r api.PreviewScheduleRequestObject) (api.PreviewScheduleResponseObject, error) {
 	if r.Body == nil {
@@ -215,12 +215,20 @@ func (s *Server) GetOccurrenceResult(ctx context.Context, r api.GetOccurrenceRes
 	return response[api.GetOccurrenceResult200JSONResponse](map[string]any{"run_status": run.Status, "fetched_at": time.Now().UTC(), "final_message": message, "error": problem})
 }
 
-func (s *Server) GetProfiles(ctx context.Context, _ api.GetProfilesRequestObject) (api.GetProfilesResponseObject, error) {
+func (s *Server) GetProfiles(ctx context.Context, r api.GetProfilesRequestObject) (api.GetProfilesResponseObject, error) {
+	if err := validateCatalogNames(r.Params.Name, r.Params.NameContains); err != nil {
+		return nil, err
+	}
 	if s.Core == nil {
 		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
 	}
-	profiles, err := s.Core.Profiles(ctx)
+	profiles, err := s.Core.Profiles(ctx, &coreapi.GetProfilesParams{Active: r.Params.Active, Available: r.Params.Available, Name: r.Params.Name, NameContains: r.Params.NameContains, Limit: r.Params.Limit, Cursor: r.Params.Cursor})
 	if err != nil {
+		if failure, ok := errors.AsType[*core.Failure](err); ok && failure.Status == 422 && (failure.Code == "invalid_cursor" || failure.Code == "validation_error") {
+			problem := schedule.Fail(422, failure.Code, "Invalid profile catalog query.")
+			problem.Problem.Details = failure.Details
+			return nil, problem
+		}
 		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
 	}
 	type item struct {
@@ -232,11 +240,13 @@ func (s *Server) GetProfiles(ctx context.Context, _ api.GetProfilesRequestObject
 		items = append(items, item{p, p.Name == s.Store.DefaultProfile})
 	}
 	return response[api.GetProfiles200JSONResponse](struct {
-		Items []item `json:"items"`
-	}{items})
+		Items      []item  `json:"items"`
+		NextCursor *string `json:"next_cursor"`
+		PrevCursor *string `json:"prev_cursor"`
+	}{items, profiles.NextCursor, profiles.PrevCursor})
 }
 func (s *Server) GetTemplates(ctx context.Context, r api.GetTemplatesRequestObject) (api.GetTemplatesResponseObject, error) {
-	if err := validateTemplateQuery(r.Params); err != nil {
+	if err := validateCatalogNames(r.Params.Name, r.Params.NameContains); err != nil {
 		return nil, err
 	}
 	if s.Core == nil {

@@ -19,14 +19,15 @@ import (
 
 type checkedCatalog struct {
 	testutil.Catalog
-	calls    int
-	err      error
-	before   func()
-	inactive bool
-	missing  bool
+	calls                                            int
+	err                                              error
+	before                                           func()
+	inactive                                         bool
+	missing                                          bool
+	profileInactive, accountInactive, profileMissing bool
 }
 
-func (c *checkedCatalog) Profiles(ctx context.Context) (coreapi.Profiles, error) {
+func (c *checkedCatalog) Profiles(ctx context.Context, params *coreapi.GetProfilesParams) (coreapi.Profiles, error) {
 	c.calls++
 	if c.before != nil {
 		c.before()
@@ -34,7 +35,19 @@ func (c *checkedCatalog) Profiles(ctx context.Context) (coreapi.Profiles, error)
 	if c.err != nil {
 		return coreapi.Profiles{}, c.err
 	}
-	return c.Catalog.Profiles(ctx)
+	if params == nil || params.Name == nil || params.Active != nil || params.Available != nil || params.Cursor != nil {
+		return coreapi.Profiles{}, errors.New("selection must use an exact unfiltered lookup")
+	}
+	page, err := c.Catalog.Profiles(ctx, params)
+	for i := range page.Items {
+		page.Items[i].Active = !c.profileInactive
+		page.Items[i].AccountActive = !c.accountInactive
+		page.Items[i].Available = !c.profileInactive && !c.accountInactive
+	}
+	if c.profileMissing {
+		page.Items = []coreapi.Profile{}
+	}
+	return page, err
 }
 func (c *checkedCatalog) Templates(ctx context.Context, params *coreapi.GetTemplatesParams) (coreapi.Templates, error) {
 	c.calls++
@@ -185,5 +198,45 @@ func TestSelectionValidationDoesNotHoldLocksAndRechecksRaces(t *testing.T) {
 	out, err := s.Update(t.Context(), access.Principal{ManageAll: true}, task.ID, []byte(`{"profile":"other"}`))
 	if err != nil || out.Profile != "other" || out.Template != "other" || out.Prompt != "concurrent edit" || catalog.calls != 4 {
 		t.Fatal(out, err, catalog.calls)
+	}
+}
+
+func TestUnavailableProfileBlocksEditsButAllowsPauseAndDelete(t *testing.T) {
+	for _, reason := range []string{"profile_not_found", "profile_inactive", "account_inactive"} {
+		t.Run(reason, func(t *testing.T) {
+			s, in := fixture(t)
+			catalog := &checkedCatalog{}
+			s.Catalog = catalog
+			actor := access.Principal{ManageAll: true}
+			task, err := s.Create(t.Context(), actor, in, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			catalog.profileMissing = reason == "profile_not_found"
+			catalog.profileInactive = reason == "profile_inactive"
+			catalog.accountInactive = reason == "account_inactive"
+			in.Status = "paused"
+			_, err = s.Create(t.Context(), actor, in, nil)
+			requireStatus(t, err, 422)
+			for _, patch := range []string{`{"name":"new"}`, `{"template":"sandbox"}`, `{"profile":"default"}`, `{"status":"active"}`, `{"status":"paused","template":"sandbox"}`} {
+				_, err = s.Update(t.Context(), actor, task.ID, []byte(patch))
+				requireStatus(t, err, 422)
+				problem, _ := errors.AsType[*schedule.Error](err)
+				want := reason
+				if len(problem.Problem.Details) != 1 || problem.Problem.Details[0].Code != want || strings.Join(problem.Problem.Details[0].Path, ".") != "body.profile" {
+					t.Fatal(problem)
+				}
+			}
+			before := catalog.calls
+			if _, err = s.Update(t.Context(), actor, task.ID, []byte(`{"status":"paused"}`)); err != nil || catalog.calls != before {
+				t.Fatal(err, catalog.calls)
+			}
+			_, err = s.Update(t.Context(), actor, task.ID, []byte(`{"status":"paused","name":"`+task.Name+`"}`))
+			requireStatus(t, err, 422)
+			before = catalog.calls
+			if err = s.Delete(t.Context(), actor, task.ID); err != nil || catalog.calls != before {
+				t.Fatal(err, catalog.calls)
+			}
+		})
 	}
 }

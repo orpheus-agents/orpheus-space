@@ -13,8 +13,15 @@ import (
 
 type Catalog struct{}
 
-func (Catalog) Profiles(context.Context) (coreapi.Profiles, error) {
-	return coreapi.Profiles{Items: []coreapi.Profile{{Name: "default", Harness: coreapi.Codex}, {Name: "other", Harness: coreapi.Codex}}}, nil
+func (Catalog) Profiles(_ context.Context, params *coreapi.GetProfilesParams) (coreapi.Profiles, error) {
+	items := []coreapi.Profile{}
+	for _, name := range []string{"default", "other"} {
+		if params != nil && (params.Name != nil && *params.Name != name || params.Active != nil && !*params.Active || params.Available != nil && !*params.Available) {
+			continue
+		}
+		items = append(items, coreapi.Profile{ID: uuid.NewSHA1(uuid.NameSpaceURL, []byte(name)), Name: name, Harness: coreapi.ProfileHarnessCodex, Model: "gpt-test", AccountID: uuid.NewSHA1(uuid.NameSpaceURL, []byte("account")), AccountName: "Account", Active: true, AccountActive: true, Available: true})
+	}
+	return coreapi.Profiles{Items: items}, nil
 }
 func (Catalog) Templates(_ context.Context, params *coreapi.GetTemplatesParams) (coreapi.Templates, error) {
 	items := []coreapi.Template{}

@@ -37,7 +37,7 @@ func TestServicesInputContract(t *testing.T) {
 	request(t, h, "POST", "/api/v1/schedules", strings.Replace(createBody, `"services"`, `"env_from"`, 1), headers, 422)
 	settings := request(t, h, "GET", "/api/v1/schedules/settings", "", headers, 200)
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(settings.Body.Bytes(), &fields); err != nil || len(fields) != 2 || fields["browser_auth"] == nil || fields["default_template"] == nil {
+	if err := json.Unmarshal(settings.Body.Bytes(), &fields); err != nil || len(fields) != 3 || fields["browser_auth"] == nil || fields["default_template"] == nil || fields["default_profile"] == nil {
 		t.Fatal(fields, err)
 	}
 }

@@ -117,8 +117,30 @@ paths:
   "/api/v1/profiles":
     get:
       operationId: GetProfiles
-      summary: Get Orpheus profiles and the creation default
+      summary: Get a page of Orpheus model profiles
+      description: Returns active and inactive profiles. Use available=true for selection and an exact name without availability filters for a stored choice. Name filters are mutually exclusive; cursors are bound to the filters.
       tags: [Catalogs]
+      parameters:
+      - in: query
+        name: active
+        schema: {type: boolean}
+      - in: query
+        name: available
+        schema: {type: boolean}
+      - in: query
+        name: name
+        description: Exact case-sensitive profile name.
+        schema: {type: string, minLength: 1}
+      - in: query
+        name: name_contains
+        description: Literal case-insensitive substring of the name.
+        schema: {type: string, minLength: 1}
+      - in: query
+        name: limit
+        schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+      - in: query
+        name: cursor
+        schema: {type: string, minLength: 1, maxLength: 8192}
       responses:
         '200':
           description: Success
@@ -567,12 +589,18 @@ components:
     Profile:
       type: object
       additionalProperties: false
-      required: [name, description, harness, model, codex, instructions, is_default]
+      required: [id, name, description, harness, account_id, account_name, account_active, active, available, model, codex, instructions, is_default]
       properties:
+        id: {type: string, format: uuid}
+        account_id: {type: string, format: uuid}
+        account_name: {type: string}
+        account_active: {type: boolean}
+        active: {type: boolean}
+        available: {type: boolean}
         name: {type: string}
         description: {type: string, nullable: true}
         harness: {type: string, enum: [codex]}
-        model: {type: string, nullable: true}
+        model: {type: string, minLength: 1}
         codex: {$ref: '#/components/schemas/CodexProfile'}
         instructions: {type: string}
         is_default: {type: boolean}
@@ -587,8 +615,10 @@ components:
     Profiles:
       type: object
       additionalProperties: false
-      required: [items]
+      required: [items, next_cursor, prev_cursor]
       properties:
+        next_cursor: {type: string, nullable: true}
+        prev_cursor: {type: string, nullable: true}
         items:
           type: array
           items: {$ref: '#/components/schemas/Profile'}
@@ -626,7 +656,7 @@ components:
         profile:
           type: string
           minLength: 1
-          description: Exact Orpheus profile name; creation uses the configured default when omitted.
+          description: Exact Orpheus profile name; creation uses the configured default when omitted. Every save except a pure pause requires an active profile and account.
         template:
           type: string
           minLength: 1
@@ -804,7 +834,11 @@ components:
       required:
       - browser_auth
       - default_template
+      - default_profile
       properties:
+        default_profile:
+          type: string
+          description: Configured creation default, independent of catalog filters and pagination. Resolve the exact name before automatically selecting it.
         default_template:
           type: string
           description: Configured creation default. Resolve it with GET /api/v1/templates?name=... without an active filter; it may be absent or inactive.

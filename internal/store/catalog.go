@@ -11,13 +11,16 @@ import (
 )
 
 type Catalog interface {
-	Profiles(context.Context) (coreapi.Profiles, error)
+	Profiles(context.Context, *coreapi.GetProfilesParams) (coreapi.Profiles, error)
 	Templates(context.Context, *coreapi.GetTemplatesParams) (coreapi.Templates, error)
 	Services(context.Context) (coreapi.Services, error)
 }
 
 // Empty arguments mean an unchanged selection in PATCH.
 func (s *Store) validateSelection(ctx context.Context, profile, template string, services []string) error {
+	if strings.ContainsRune(profile, 0) || !utf8.ValidString(profile) {
+		return schedule.Invalid("profile")
+	}
 	if strings.ContainsRune(template, 0) || !utf8.ValidString(template) {
 		return schedule.Invalid("template")
 	}
@@ -29,12 +32,19 @@ func (s *Store) validateSelection(ctx context.Context, profile, template string,
 		return unavailable
 	}
 	if profile != "" {
-		profiles, err := s.Catalog.Profiles(ctx)
+		profiles, err := s.Catalog.Profiles(ctx, &coreapi.GetProfilesParams{Name: &profile})
 		if err != nil {
 			return unavailable
 		}
-		if !slices.ContainsFunc(profiles.Items, func(p coreapi.Profile) bool { return p.Name == profile }) {
-			return schedule.Invalid("profile")
+		index := slices.IndexFunc(profiles.Items, func(p coreapi.Profile) bool { return p.Name == profile })
+		if index < 0 {
+			return invalidProfile("profile_not_found", "The selected profile is not registered.")
+		}
+		if !profiles.Items[index].Active {
+			return invalidProfile("profile_inactive", "Choose an active profile to save the schedule.")
+		}
+		if !profiles.Items[index].AccountActive {
+			return invalidProfile("account_inactive", "The selected profile's account is inactive.")
 		}
 	}
 	if template != "" {
@@ -66,6 +76,13 @@ func (s *Store) validateSelection(ctx context.Context, profile, template string,
 
 func invalidTemplate(code, message string) error {
 	err := schedule.Invalid("template")
+	err.Problem.Message = message
+	err.Problem.Details[0].Code = code
+	return err
+}
+
+func invalidProfile(code, message string) error {
+	err := schedule.Invalid("profile")
 	err.Problem.Message = message
 	err.Problem.Details[0].Code = code
 	return err

@@ -291,7 +291,7 @@ type CreateSchedule struct {
 	// OwnerEmail SAML non-admins must use their session email; omission fills it, explicit null is forbidden. Full-access callers may use any owner or null.
 	OwnerEmail nullable.Nullable[string] `json:"owner_email,omitempty"`
 
-	// Profile Exact Orpheus profile name; creation uses the configured default when omitted.
+	// Profile Exact Orpheus profile name; creation uses the configured default when omitted. Every save except a pure pause requires an active profile and account.
 	Profile *string `json:"profile,omitempty"`
 	Prompt  string  `json:"prompt"`
 
@@ -407,13 +407,19 @@ type Problem struct {
 
 // Profile defines model for Profile.
 type Profile struct {
-	Codex        CodexProfile              `json:"codex"`
-	Description  nullable.Nullable[string] `json:"description"`
-	Harness      ProfileHarness            `json:"harness"`
-	Instructions string                    `json:"instructions"`
-	IsDefault    bool                      `json:"is_default"`
-	Model        nullable.Nullable[string] `json:"model"`
-	Name         string                    `json:"name"`
+	AccountActive bool                      `json:"account_active"`
+	AccountID     openapi_types.UUID        `json:"account_id"`
+	AccountName   string                    `json:"account_name"`
+	Active        bool                      `json:"active"`
+	Available     bool                      `json:"available"`
+	Codex         CodexProfile              `json:"codex"`
+	Description   nullable.Nullable[string] `json:"description"`
+	Harness       ProfileHarness            `json:"harness"`
+	ID            openapi_types.UUID        `json:"id"`
+	Instructions  string                    `json:"instructions"`
+	IsDefault     bool                      `json:"is_default"`
+	Model         string                    `json:"model"`
+	Name          string                    `json:"name"`
 }
 
 // ProfileHarness defines model for Profile.Harness.
@@ -421,7 +427,9 @@ type ProfileHarness string
 
 // Profiles defines model for Profiles.
 type Profiles struct {
-	Items []Profile `json:"items"`
+	Items      []Profile                 `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	PrevCursor nullable.Nullable[string] `json:"prev_cursor"`
 }
 
 // Schedule defines model for Schedule.
@@ -486,6 +494,9 @@ type SessionMode string
 // Settings defines model for Settings.
 type Settings struct {
 	BrowserAuth SettingsBrowserAuth `json:"browser_auth"`
+
+	// DefaultProfile Configured creation default, independent of catalog filters and pagination. Resolve the exact name before automatically selecting it.
+	DefaultProfile string `json:"default_profile"`
 
 	// DefaultTemplate Configured creation default. Resolve it with GET /api/v1/templates?name=... without an active filter; it may be absent or inactive.
 	DefaultTemplate string `json:"default_template"`
@@ -556,6 +567,20 @@ type OwnerEmail = []string
 
 // Unowned defines model for Unowned.
 type Unowned = bool
+
+// GetProfilesParams defines parameters for GetProfiles.
+type GetProfilesParams struct {
+	Active    *bool `form:"active,omitempty" json:"active,omitempty"`
+	Available *bool `form:"available,omitempty" json:"available,omitempty"`
+
+	// Name Exact case-sensitive profile name.
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
+
+	// NameContains Literal case-insensitive substring of the name.
+	NameContains *string `form:"name_contains,omitempty" json:"name_contains,omitempty"`
+	Limit        *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor       *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
 
 // ListSchedulesParams defines parameters for ListSchedules.
 type ListSchedulesParams struct {
@@ -697,10 +722,12 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/auth/session (the `GetAuthSession` operationId).
 	GetAuthSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetProfiles Get Orpheus profiles and the creation default
+	// GetProfiles Get a page of Orpheus model profiles
+	//
+	// Returns active and inactive profiles. Use available=true for selection and an exact name without availability filters for a stored choice. Name filters are mutually exclusive; cursors are bound to the filters.
 	//
 	// Corresponds with GET /api/v1/profiles (the `GetProfiles` operationId).
-	GetProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetProfiles(ctx context.Context, params *GetProfilesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSchedules List schedules
 	//
@@ -859,11 +886,13 @@ func (c *Client) GetAuthSession(ctx context.Context, reqEditors ...RequestEditor
 	return c.Client.Do(req)
 }
 
-// GetProfiles Get Orpheus profiles and the creation default
+// GetProfiles Get a page of Orpheus model profiles
+//
+// Returns active and inactive profiles. Use available=true for selection and an exact name without availability filters for a stored choice. Name filters are mutually exclusive; cursors are bound to the filters.
 //
 // Corresponds with GET /api/v1/profiles (the `GetProfiles` operationId).
-func (c *Client) GetProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetProfilesRequest(c.Server)
+func (c *Client) GetProfiles(ctx context.Context, params *GetProfilesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProfilesRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1253,7 +1282,7 @@ func NewGetAuthSessionRequest(server string) (*http.Request, error) {
 }
 
 // NewGetProfilesRequest constructs an http.Request for the GetProfiles method
-func NewGetProfilesRequest(server string) (*http.Request, error) {
+func NewGetProfilesRequest(server string, params *GetProfilesParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1269,6 +1298,93 @@ func NewGetProfilesRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Active != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "active", *params.Active, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Available != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "available", *params.Available, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Name != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "name", *params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.NameContains != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "name_contains", *params.NameContains, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -2169,12 +2285,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/auth/session (the `GetAuthSession` operationId).
 	GetAuthSessionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAuthSessionHTTPResponse, error)
 
-	// GetProfilesWithResponse Get Orpheus profiles and the creation default
+	// GetProfilesWithResponse Get a page of Orpheus model profiles
+	//
+	// Returns active and inactive profiles. Use available=true for selection and an exact name without availability filters for a stored choice. Name filters are mutually exclusive; cursors are bound to the filters.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/profiles (the `GetProfiles` operationId).
-	GetProfilesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetProfilesHTTPResponse, error)
+	GetProfilesWithResponse(ctx context.Context, params *GetProfilesParams, reqEditors ...RequestEditorFn) (*GetProfilesHTTPResponse, error)
 
 	// ListSchedulesWithResponse List schedules
 	//
@@ -3300,13 +3418,15 @@ func (c *ClientWithResponses) GetAuthSessionWithResponse(ctx context.Context, re
 	return ParseGetAuthSessionHTTPResponse(rsp)
 }
 
-// GetProfilesWithResponse Get Orpheus profiles and the creation default
+// GetProfilesWithResponse Get a page of Orpheus model profiles
+//
+// Returns active and inactive profiles. Use available=true for selection and an exact name without availability filters for a stored choice. Name filters are mutually exclusive; cursors are bound to the filters.
 //
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/profiles (the `GetProfiles` operationId).
-func (c *ClientWithResponses) GetProfilesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetProfilesHTTPResponse, error) {
-	rsp, err := c.GetProfiles(ctx, reqEditors...)
+func (c *ClientWithResponses) GetProfilesWithResponse(ctx context.Context, params *GetProfilesParams, reqEditors ...RequestEditorFn) (*GetProfilesHTTPResponse, error) {
+	rsp, err := c.GetProfiles(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
