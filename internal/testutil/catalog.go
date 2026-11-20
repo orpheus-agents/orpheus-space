@@ -48,8 +48,9 @@ func Execution() config.Execution {
 
 func (Catalog) Services(context.Context) (coreapi.Services, error) {
 	return coreapi.Services{Items: []coreapi.Service{
-		{Code: "a", Name: "Service A", Description: "First test service", EnvFrom: []string{"A"}},
-		{Code: "b", Name: "Service B", Description: "Second test service", EnvFrom: []string{"B"}},
-		{Code: "orpheus-space", Name: "Orpheus Space", Description: "Manage schedules", EnvFrom: []string{"ORPHEUS_SPACE_API_KEY"}},
+		{Code: "a", Name: "Service A", Description: "First test service", EnvNames: []string{"A"}},
+		{Code: "b", Name: "Service B", Description: "Second test service", EnvNames: []string{"B"}},
+		{Code: "orpheus-space", Name: "Orpheus Space", Description: "Manage schedules", EnvNames: []string{"ORPHEUS_SPACE_API_KEY"}},
+		{Code: "gitlab-registry", Name: "GitLab Registry", Description: "Pull images", EnvNames: []string{"GITLAB_REGISTRY_TOKEN"}},
 	}}, nil
 }

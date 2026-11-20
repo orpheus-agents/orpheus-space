@@ -14,7 +14,7 @@ import (
 )
 
 func TestServicesSnapshotScopeAndFingerprint(t *testing.T) {
-	row := db.Schedule{ID: uuid.New(), Profile: "default", Template: "sandbox", Timezone: "UTC", SessionMode: "reuse", Services: []string{"b", "a"}}
+	row := db.Schedule{ID: uuid.New(), Profile: "default", Template: "sandbox", Timezone: "UTC", SessionMode: "reuse", Services: []string{"gitlab-registry", "a"}}
 	occ := db.ScheduleOccurrence{ID: uuid.New(), ScheduledAt: time.Now()}
 	build := Builder(config.Config{})
 	first, err := build(row, occ, nil, occ.ScheduledAt)
@@ -26,10 +26,10 @@ func TestServicesSnapshotScopeAndFingerprint(t *testing.T) {
 		t.Fatal(err)
 	}
 	sandbox := request.Configuration.Sandbox
-	if sandbox.Services == nil || !slices.Equal(*sandbox.Services, []string{"a", "b"}) || sandbox.EnvFrom != nil || bytes.Contains(first.Body, []byte(`"env_from"`)) {
+	if sandbox.Services == nil || !slices.Equal(*sandbox.Services, []string{"a", "gitlab-registry"}) || sandbox.EnvFrom != nil || bytes.Contains(first.Body, []byte(`"env_from"`)) {
 		t.Fatal(string(first.Body))
 	}
-	row.Services = []string{"a", "b"}
+	row.Services = []string{"a", "gitlab-registry"}
 	reordered, err := build(row, occ, nil, occ.ScheduledAt)
 	if err != nil || reordered.Fingerprint != first.Fingerprint {
 		t.Fatal(reordered, err)

@@ -41,7 +41,7 @@ only `{"status":"paused"}` for the exception. Creation requires available select
 even when initially paused. Omitting names saves the validated configured defaults.
 
 Read `orpheus-space services --json` before selecting services. The response has
-`items` with `code`, `name`, `description` and `env_from` (ENV names, never values).
+`items` with `code`, `name`, `description` and `env_names` (environment variable names delivered to the client).
 Choose the codes needed for the task's sources and delivery tools and pass them in
 `services`. There are no base or default services: `services: []` gives no service
 access. All catalog entries are selectable, including Orpheus Space.
