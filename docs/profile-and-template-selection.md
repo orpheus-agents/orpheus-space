@@ -1,5 +1,7 @@
 # Profile and template selection
 
+Space supports Codex and OpenCode profiles from the same Orpheus catalog. A schedule selects a profile by name and uses its configured harness, provider and model.
+
 Schedules store concrete `profile` and `template` names. Creation uses
 `execution.agent.profile` and `execution.sandbox.template` when the corresponding
 field is omitted. Changing these defaults affects only newly created schedules.

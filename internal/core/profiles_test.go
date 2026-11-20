@@ -39,6 +39,14 @@ func TestProfileResponseContract(t *testing.T) {
 		}
 	}
 	t.Run("inactive", func(t *testing.T) { check(t, valid(), false) })
+	t.Run("mixed harnesses", func(t *testing.T) {
+		body := valid()
+		openCode := valid()["items"].([]any)[0].(map[string]any)
+		openCode["harness"] = "opencode"
+		openCode["name"] = "kimi"
+		body["items"] = append(body["items"].([]any), openCode)
+		check(t, body, false)
+	})
 	t.Run("empty page", func(t *testing.T) {
 		body := valid()
 		body["items"] = []any{}
@@ -66,7 +74,7 @@ func TestProfileResponseContract(t *testing.T) {
 		value       any
 	}{
 		{"zero ID", "id", uuid.Nil.String()}, {"bad ID", "id", "invalid"},
-		{"empty name", "name", ""}, {"empty model", "model", ""},
+		{"unknown harness", "harness", "unsupported"}, {"empty name", "name", ""}, {"empty model", "model", ""},
 		{"null active", "active", nil}, {"null account flag", "account_active", nil}, {"null availability", "available", nil}, {"inconsistent availability", "available", true}, {"zero account", "account_id", uuid.Nil.String()}, {"null instructions", "instructions", nil}, {"null codex", "codex", nil}, {"string active", "active", "false"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

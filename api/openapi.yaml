@@ -599,7 +599,7 @@ components:
         available: {type: boolean}
         name: {type: string}
         description: {type: string, nullable: true}
-        harness: {type: string, enum: [codex]}
+        harness: {type: string, enum: [codex, opencode]}
         model: {type: string, minLength: 1}
         codex: {$ref: '#/components/schemas/CodexProfile'}
         instructions: {type: string}
