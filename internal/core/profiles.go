@@ -34,7 +34,7 @@ func decodeProfilePage(raw []byte) (coreapi.Profiles, error) {
 			}
 		}
 		p := out.Items[i]
-		if p.ID == uuid.Nil || p.AccountID == uuid.Nil || p.Name == "" || p.AccountName == "" || p.Model == "" || p.Harness != coreapi.ProfileHarnessCodex || p.Available != (p.Active && p.AccountActive) {
+		if p.ID == uuid.Nil || p.AccountID == uuid.Nil || p.Name == "" || p.AccountName == "" || p.Model == "" || !p.Harness.Valid() || p.Available != (p.Active && p.AccountActive) {
 			return coreapi.Profiles{}, invalid
 		}
 	}

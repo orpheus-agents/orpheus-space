@@ -171,13 +171,16 @@ func (e OccurrenceTrigger) Valid() bool {
 
 // Defines values for ProfileHarness.
 const (
-	Codex ProfileHarness = "codex"
+	Codex    ProfileHarness = "codex"
+	Opencode ProfileHarness = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the ProfileHarness enum.
 func (e ProfileHarness) Valid() bool {
 	switch e {
 	case Codex:
+		return true
+	case Opencode:
 		return true
 	default:
 		return false
