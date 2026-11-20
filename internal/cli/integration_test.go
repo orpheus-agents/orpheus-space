@@ -70,7 +70,7 @@ func TestCLIWithSpaceAPI(t *testing.T) {
 			t.Fatal(code, errout)
 		}
 		raw = out
-		if command == "services" && !strings.Contains(raw, `"code":"orpheus-space"`) || command != "services" && !strings.Contains(raw, `"is_default":true`) {
+		if command == "services" && (!strings.Contains(raw, `"code":"gitlab-registry"`) || !strings.Contains(raw, `"env_names":["GITLAB_REGISTRY_TOKEN"]`)) || command != "services" && !strings.Contains(raw, `"is_default":true`) {
 			t.Fatal(raw)
 		}
 	}

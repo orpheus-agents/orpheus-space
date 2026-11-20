@@ -566,18 +566,19 @@ components:
     Service:
       type: object
       additionalProperties: false
-      required: [code, name, description, env_from]
+      required: [code, name, description, env_names]
       properties:
         code:
           type: string
           pattern: "^[a-z][a-z0-9_-]{0,63}$"
         name: {type: string}
         description: {type: string}
-        env_from:
+        env_names:
           type: array
+          uniqueItems: true
           items:
             type: string
-          description: Names of worker environment variables included in this service; never values.
+          description: Sorted destination variable names supplied by this service to the client.
     Services:
       type: object
       additionalProperties: false

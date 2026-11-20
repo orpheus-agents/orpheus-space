@@ -478,9 +478,9 @@ type Service struct {
 	Code        string `json:"code"`
 	Description string `json:"description"`
 
-	// EnvFrom Names of worker environment variables included in this service; never values.
-	EnvFrom []string `json:"env_from"`
-	Name    string   `json:"name"`
+	// EnvNames Sorted destination variable names supplied by this service to the client.
+	EnvNames []string `json:"env_names"`
+	Name     string   `json:"name"`
 }
 
 // ServiceCodes Explicit selection of service codes. No defaults; empty clears the selection. Unknown codes return 422 and an unavailable catalog returns 503. Unchanged selections can be preserved without the catalog; resuming validates the full selection.

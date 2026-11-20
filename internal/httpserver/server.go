@@ -284,5 +284,9 @@ func (s *Server) GetServices(ctx context.Context, _ api.GetServicesRequestObject
 	if err != nil {
 		return nil, schedule.Fail(503, "core_unavailable", "Orpheus is temporarily unavailable.")
 	}
-	return response[api.GetServices200JSONResponse](services)
+	items := make([]api.Service, 0, len(services.Items))
+	for _, service := range services.Items {
+		items = append(items, api.Service(service))
+	}
+	return api.GetServices200JSONResponse{Items: items}, nil
 }

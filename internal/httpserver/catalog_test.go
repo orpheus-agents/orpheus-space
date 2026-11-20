@@ -35,7 +35,7 @@ func TestCatalogProxyAndSelectionContract(t *testing.T) {
 		case "/api/v1/templates":
 			_, _ = w.Write([]byte(`{"items":[{"id":"00000000-0000-0000-0000-000000000001","name":"sandbox","template_name":"sandbox","tag":null,"description":null,"active":true}],"next_cursor":null,"prev_cursor":null}`))
 		case "/api/v1/services":
-			_, _ = w.Write([]byte(`{"items":[{"code":"orpheus-space","name":"Space","description":"Manage schedules","env_from":["ORPHEUS_SPACE_API_KEY"]}]}`))
+			_, _ = w.Write([]byte(`{"items":[{"code":"gitlab-registry","name":"GitLab Registry","description":"Pull images","env_names":["GITLAB_REGISTRY_TOKEN"]}]}`))
 		default:
 			t.Error("unexpected upstream path", r.URL.Path)
 		}
@@ -69,7 +69,7 @@ func TestCatalogProxyAndSelectionContract(t *testing.T) {
 	}
 	raw = request(t, h, "GET", "/api/v1/services", "", headers, 200)
 	var services api.Services
-	if err = json.Unmarshal(raw.Body.Bytes(), &services); err != nil || len(services.Items) != 1 || services.Items[0].Code != "orpheus-space" || services.Items[0].Name != "Space" || services.Items[0].Description != "Manage schedules" || len(services.Items[0].EnvFrom) != 1 || services.Items[0].EnvFrom[0] != "ORPHEUS_SPACE_API_KEY" {
+	if err = json.Unmarshal(raw.Body.Bytes(), &services); err != nil || len(services.Items) != 1 || services.Items[0].Code != "gitlab-registry" || services.Items[0].Name != "GitLab Registry" || services.Items[0].Description != "Pull images" || len(services.Items[0].EnvNames) != 1 || services.Items[0].EnvNames[0] != "GITLAB_REGISTRY_TOKEN" {
 		t.Fatal(services, err)
 	}
 	s.Store.DefaultProfile = "removed"
